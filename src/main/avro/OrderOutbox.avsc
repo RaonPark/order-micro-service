@@ -1,6 +1,6 @@
 {
   "name": "OrderOutboxMessage",
-  "namespace": "com.avro",
+  "namespace": "com.avro.order",
   "type": "record",
   "fields": [
     {
