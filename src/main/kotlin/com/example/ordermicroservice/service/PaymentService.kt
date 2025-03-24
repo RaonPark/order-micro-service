@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.service
 
-import com.avro.PaymentOutboxMessage
+import com.avro.payment.PaymentOutboxMessage
+import com.avro.payment.PaymentStatusMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.PaymentType
@@ -14,10 +15,16 @@ import com.example.ordermicroservice.vo.PaymentVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.annotation.RetryableTopic
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.retrytopic.DltStrategy
+import org.springframework.kafka.retrytopic.TopicSuffixingStrategy
 import org.springframework.kafka.support.Acknowledgment
+import org.springframework.retry.annotation.Backoff
 import org.springframework.stereotype.Service
 import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.CompletableFuture
 
 @Service
@@ -25,7 +32,8 @@ class PaymentService(
     private val paymentRepository: PaymentRepository,
     private val paymentOutboxRepository: PaymentOutboxRepository,
     private val redisService: RedisService,
-    private val paymentOutboxTemplate: KafkaTemplate<String, PaymentOutboxMessage>
+    private val paymentOutboxTemplate: KafkaTemplate<String, PaymentOutboxMessage>,
+    private val paymentStatusTemplate: KafkaTemplate<String, PaymentStatusMessage>,
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -66,9 +74,21 @@ class PaymentService(
         return nowTime.plus(snowFlake).plus(amount)
     }
 
+    @RetryableTopic(
+        retryTopicSuffix = "-retry",
+        dltTopicSuffix = "-dlt",
+        topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
+        concurrency = "3",
+        numPartitions = "10",
+        replicationFactor = "3",
+        dltStrategy = DltStrategy.ALWAYS_RETRY_ON_ERROR,
+        backoff = Backoff(value = 1000L, multiplier = 2.0, maxDelay = 20000L, random = true),
+        kafkaTemplate = "paymentOutboxTemplate"
+    )
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_OUTBOX],
         groupId = "PAYMENT_OUTBOX",
-        containerFactory = "paymentOutboxListenerContainer")
+        containerFactory = "paymentOutboxListenerContainer",
+        concurrency = "3")
     fun processOutbox(record: ConsumerRecord<String, PaymentOutboxMessage>, ack: Acknowledgment) {
         val outbox = record.value()
 
@@ -81,14 +101,40 @@ class PaymentService(
             ?: throw RuntimeException("${outbox.paymentId}에 해당하는 결제정보가 없습니다!")
 
         //  TODO: payment 알고리즘 추가 필요!
+        // TODO: return 값은 여러 가지를 포함하겠지만 타임스탬프는 항상 포함!
+        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+        val payProcessedTime = Instant.now().atZone(ZoneId.of("Asia/Seoul")).format(formatter)
 
         payment.processStage = ProcessStage.PROCESSED
         paymentRepository.save(payment)
 
         // send payment is finished.
         outbox.processStage = com.avro.support.ProcessStage.PROCESSED
-        paymentOutboxTemplate.send(KafkaTopicNames.PAYMENT_STATUS, outbox.aggId, outbox)
+
+        val paymentStatus = buildPaymentStatus(payment.paymentId, payProcessedTime)
+        paymentStatusTemplate.send(KafkaTopicNames.PAYMENT_STATUS, payment.paymentId, paymentStatus)
 
         ack.acknowledge()
+    }
+
+    private fun buildPaymentStatus(paymentId: String, processedTime: String): PaymentStatusMessage {
+        return PaymentStatusMessage.newBuilder()
+            .setPaymentId(paymentId)
+            .setCompleted(true)
+            .setProcessedTime(processedTime)
+            .build()
+    }
+
+    @KafkaListener(topics = [KafkaTopicNames.PAYMENT_STATUS],
+        groupId = "PAYMENT_STATUS",
+        concurrency = "3",
+        containerFactory = "paymentStatusListenerContainer"
+        )
+    fun sendPaymentStatus(
+        record: ConsumerRecord<String, PaymentStatusMessage>,
+    ) {
+        val paymentStatus = record.value()
+
+        log.info { "${paymentStatus.paymentId}에 대한 결제가 완료되었습니다." }
     }
 }

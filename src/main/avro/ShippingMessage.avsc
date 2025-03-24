@@ -1,6 +1,6 @@
 {
   "name": "ShippingMessage",
-  "namespace": "com.avro",
+  "namespace": "com.avro.shipping",
   "type": "record",
   "fields": [
     {

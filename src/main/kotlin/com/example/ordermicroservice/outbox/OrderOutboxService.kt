@@ -1,6 +1,6 @@
 package com.example.ordermicroservice.outbox
 
-import com.avro.OrderOutboxMessage
+import com.avro.order.OrderOutboxMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.OrderOutbox
 import com.example.ordermicroservice.document.ProcessStage
@@ -60,16 +60,6 @@ class OrderOutboxService(
             outboxPublishing(orderOutbox)
 
             orderOutboxRepository.save(orderOutbox)
-        }
-    }
-
-    @Scheduled(fixedRate = 10000L)
-    fun processPendingOutbox() {
-        val orderOutboxes = orderOutboxRepository.findByProcessStage(ProcessStage.PENDING)
-
-        for(orderOutbox in orderOutboxes) {
-            log.info { "문제가 생긴 주문 = ${orderOutbox.orderId}을 다시 시행합니다." }
-            outboxPublishing(orderOutbox)
         }
     }
 }

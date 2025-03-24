@@ -1,14 +1,14 @@
 {
-  "name": "PaymentOutboxMessage",
+  "name": "PaymentStatusMessage",
   "namespace": "com.avro.payment",
   "type": "record",
   "fields": [
     {
-      "name": "processStage",
-      "type": "com.avro.support.ProcessStage"
+      "name": "completed",
+      "type": "boolean"
     },
     {
-      "name": "aggId",
+      "name": "processedTime",
       "type": "string"
     },
     {

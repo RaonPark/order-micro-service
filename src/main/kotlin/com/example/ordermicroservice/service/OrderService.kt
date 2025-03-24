@@ -1,8 +1,7 @@
 package com.example.ordermicroservice.service
 
-import com.avro.OrderOutboxMessage
-import com.avro.PaymentOutboxMessage
-import com.avro.ShippingMessage
+import com.avro.order.OrderOutboxMessage
+import com.avro.shipping.ShippingMessage
 import com.avro.support.geojson.Location
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.OrderOutbox
@@ -17,7 +16,6 @@ import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
-import org.apache.kafka.common.utils.ExponentialBackoff
 import org.springframework.http.MediaType
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.annotation.RetryableTopic
@@ -106,10 +104,10 @@ class OrderService(
     )
     @KafkaListener(topics = ["order-outbox.topic"],
         groupId = "ORDER_OUTBOX",
-        containerFactory = "orderListenerContainer",
+        containerFactory = "orderOutboxListenerContainer",
         concurrency = "3",
         )
-    fun processOrder(record: ConsumerRecord<String, OrderOutboxMessage>) {
+    fun processOrder(record: ConsumerRecord<String, OrderOutboxMessage>, ack: Acknowledgment) {
         val outbox = record.value()
 
         log.info { "$outbox order-outbox.topic이 들어왔습니다." }
@@ -131,12 +129,14 @@ class OrderService(
         }
 
         val shippingMessage = generateShippingMessage(orderId = outbox.orderId)
-        shippingTemplate.send(KafkaTopicNames.SHIPPING, "order-${outbox.orderId}", shippingMessage)
+        shippingTemplate.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
 
         log.info { "${shippingMessage.orderId}가 배달 서비스로 퍼블리싱되었습니다." }
 
         foundOutbox.processStage = ProcessStage.PROCESSED
         orderOutboxRepository.save(foundOutbox)
+
+        ack.acknowledge()
     }
 
     private fun generateShippingMessage(orderId: String): ShippingMessage {
@@ -169,15 +169,5 @@ class OrderService(
             .setSellerLocationString(seller.address)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
             .build()
-    }
-
-    @KafkaListener(topics = [KafkaTopicNames.PAYMENT_STATUS], containerFactory = "paymentOutboxListenerContainer")
-    fun receivePaymentStatus(record: ConsumerRecord<String, PaymentOutboxMessage>) {
-        val outbox = record.value()
-
-        if(outbox.processStage != ProcessStage.PROCESSED.toAvro())
-            throw RuntimeException("결제번호 ${outbox.paymentId} 결제가 완료되지 않았습니다.")
-
-        log.info { "${outbox.paymentId}에 해당하는 결제가 완료되었습니다." }
     }
 }

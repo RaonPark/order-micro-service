@@ -1,6 +1,6 @@
 package com.example.ordermicroservice.outbox
 
-import com.avro.PaymentOutboxMessage
+import com.avro.payment.PaymentOutboxMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.ProcessStage
