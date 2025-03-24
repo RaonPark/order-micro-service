@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: "ordermircroservice"
+  data:
+    mongodb:
+      uri: mongodb://root:1234@mongodb:27017/ordermicroservice?authSource=admin
+      host: root
+      password: 1234
+      database: ordermicroservice
+
+
+logging:
+  level:
+    org.apache.kafka: WARN
+    org.springframework.kafka.support.serializer: DEBUG
+    io.confluent.kafka.serializers: DEBUG

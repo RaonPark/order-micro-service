@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package protobuf.order;
+
+option java_outer_classname = "OrderOutboxMessage";
+
+import "protobuf/support/ProcessStage.proto";
+
+message Message {
+  string aggId = 5;
+  protobuf.support.ProcessStage processStage = 6;
+  string orderId = 7;
+}

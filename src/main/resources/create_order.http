@@ -1,0 +1,20 @@
+###
+POST http://localhost:8080/createOrder
+Content-Type: application/json
+
+{
+  "userId": "raonpark",
+  "products": [
+    {
+      "name": "Coca Cola",
+      "quantity": 3,
+      "price": 2300
+    },
+    {
+      "name": "Coffee Maker",
+      "quantity": 1,
+      "price": 310000
+    }
+  ],
+  "sellerId": "1"
+}

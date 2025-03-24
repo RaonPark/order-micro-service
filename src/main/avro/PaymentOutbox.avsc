@@ -1,0 +1,19 @@
+{
+  "name": "PaymentOutboxMessage",
+  "namespace": "com.avro",
+  "type": "record",
+  "fields": [
+    {
+      "name": "processStage",
+      "type": "com.avro.support.ProcessStage"
+    },
+    {
+      "name": "aggId",
+      "type": "string"
+    },
+    {
+      "name": "paymentId",
+      "type": "string"
+    }
+  ]
+}

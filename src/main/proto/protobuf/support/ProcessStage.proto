@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package protobuf.support;
+
+option java_outer_classname = "Enums";
+
+enum ProcessStage {
+  BEFORE_PROCESS = 0;
+  PENDING = 1;
+  PROCESSED = 2;
+  NO_OP = 3;
+  EXCEPTION = 4;
+}

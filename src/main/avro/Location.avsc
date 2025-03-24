@@ -1,0 +1,15 @@
+{
+  "name": "Location",
+  "namespace": "com.avro.support.geojson",
+  "type": "record",
+  "fields": [
+    {
+      "name": "latitude",
+      "type": "double"
+    },
+    {
+      "name": "longitude",
+      "type": "double"
+    }
+  ]
+}

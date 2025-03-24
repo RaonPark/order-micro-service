@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package protobuf.shipping;
+
+option java_outer_classname = "ShippingMessage";
+
+message GeoJson {
+  double latitude = 1;
+  double longitude = 2;
+}
+
+message Message {
+  string orderNumber = 5;
+  string username = 6;
+  GeoJson shippingLocation = 7;
+  string shippingLocationString = 8;
+  string seller = 9;
+  string sellerLocationString = 10;
+}
