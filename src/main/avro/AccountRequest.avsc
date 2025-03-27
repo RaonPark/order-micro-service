@@ -1,0 +1,25 @@
+{
+  "name": "AccountRequestMessage",
+  "namespace": "com.avro.account",
+  "type": "record",
+  "fields": [
+    {
+      "name": "accountNumber",
+      "type": "string"
+    },
+    {
+      "name": "amount",
+      "type": "long",
+      "default": 0
+    },
+    {
+      "name": "requestType",
+      "type": {
+        "type": "enum",
+        "name": "AccountRequestType",
+        "namespace": "com.avro.account",
+        "symbols": ["DEPOSIT", "WITHDRAW", "SELECT"]
+      }
+    }
+  ]
+}

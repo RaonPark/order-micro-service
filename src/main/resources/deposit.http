@@ -1,0 +1,7 @@
+POST http://localhost:8080/deposit
+Content-Type: application/json
+
+{
+  "accountNumber": "123-123-123-123",
+  "amount": 10000
+}

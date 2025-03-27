@@ -6,4 +6,6 @@ object KafkaTopicNames {
     const val SHIPPING = "shipping.topic"
     const val PAYMENT_STATUS = "payment-status.topic"
     const val ORDER_OUTBOX_STATUS = "order-outbox-status.topic"
+    const val ACCOUNT_REQUEST = "account-request.topic"
+    const val ACCOUNT_REQUEST_RESPONSE = "account-request-response.topic"
 }
