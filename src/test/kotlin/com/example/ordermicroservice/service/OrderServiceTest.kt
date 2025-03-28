@@ -1,8 +1,10 @@
 package com.example.ordermicroservice.service
 
+import com.avro.shipping.ShippingMessage
 import com.example.ordermicroservice.document.Orders
 import com.example.ordermicroservice.document.Products
 import com.example.ordermicroservice.dto.*
+import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
 import com.example.ordermicroservice.repository.mongo.SellerRepository
 import com.example.ordermicroservice.vo.UserVo
@@ -14,6 +16,7 @@ import io.mockk.MockKAnnotations
 import io.mockk.every
 import io.mockk.mockk
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.kafka.core.KafkaTemplate
 
 class OrderServiceTest: BehaviorSpec({
     extensions(SpringExtension)
@@ -42,7 +45,9 @@ class OrderServiceTest: BehaviorSpec({
         sellerService = SellerService(sellerRepository, redisService)
 
         orderRepository = mockk()
-        orderService = OrderService(orderRepository, redisService)
+        val orderOutboxRepository = mockk<OrderOutboxRepository>()
+        val mockTemplate = mockk<KafkaTemplate<String, ShippingMessage>>()
+        orderService = OrderService(orderRepository, orderOutboxRepository, redisService, mockTemplate)
 
     }
 

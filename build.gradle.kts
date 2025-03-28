@@ -45,7 +45,12 @@ dependencies {
     implementation("io.confluent:kafka-streams-avro-serde:7.9.0")
     implementation("io.confluent:kafka-schema-registry-client:7.9.0")
 
+    // kotlin logging
     implementation("io.github.oshai:kotlin-logging-jvm:7.0.3")
+
+    // coroutines
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.1")
+    runtimeOnly("org.jetbrains.kotlinx:kotlinx-coroutines-reactor:1.10.1")
 
     // for websocket
     implementation("org.springframework.boot:spring-boot-starter-reactor-netty")

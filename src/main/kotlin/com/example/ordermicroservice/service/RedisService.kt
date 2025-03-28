@@ -1,8 +1,10 @@
 package com.example.ordermicroservice.service
 
+import com.avro.account.AccountRequestMessage
 import com.example.ordermicroservice.vo.PaymentVo
 import com.example.ordermicroservice.vo.UserVo
 import com.fasterxml.jackson.databind.ObjectMapper
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.data.redis.core.RedisTemplate
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -14,6 +16,10 @@ class RedisService(
     private val numericRedisTemplate: RedisTemplate<String, Long>,
     private val objectMapper: ObjectMapper
 ) {
+    companion object {
+        val log = KotlinLogging.logger {  }
+    }
+
     fun saveUserVo(userId: String, user: UserVo) {
         val userVo = objectMapper.writeValueAsString(user)
         redisTemplate.opsForValue().setIfAbsent(userId, userVo, Duration.ofMinutes(30))
@@ -24,6 +30,18 @@ class RedisService(
         val userVo = objectMapper.readValue(userString, UserVo::class.java)
 
         return userVo
+    }
+
+    fun saveBalance(accountNumber: String, balance: Long) {
+        numericRedisTemplate.opsForValue().set(accountNumber, balance)
+    }
+
+    fun incrBalance(accountNumber: String, amount: Long) {
+        numericRedisTemplate.opsForValue().increment(accountNumber, amount)
+    }
+
+    fun getBalance(accountNumber: String): Long {
+        return numericRedisTemplate.opsForValue().get(accountNumber) ?: -1L
     }
 
     fun savePayment(aggId: String, payment: PaymentVo) {

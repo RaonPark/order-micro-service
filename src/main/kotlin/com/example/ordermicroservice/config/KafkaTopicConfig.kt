@@ -46,4 +46,22 @@ class KafkaTopicConfig {
             .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
             .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
             .build()
+
+    @Bean
+    fun accountRequestTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.ACCOUNT_REQUEST)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun accountResponseTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.ACCOUNT_REQUEST_RESPONSE)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
 }

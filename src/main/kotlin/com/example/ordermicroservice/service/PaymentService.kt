@@ -7,6 +7,7 @@ import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.PaymentType
 import com.example.ordermicroservice.document.Payments
 import com.example.ordermicroservice.document.ProcessStage
+import com.example.ordermicroservice.dto.DepositRequest
 import com.example.ordermicroservice.dto.SavePayRequest
 import com.example.ordermicroservice.dto.SavePayResponse
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
@@ -14,6 +15,7 @@ import com.example.ordermicroservice.repository.mongo.PaymentRepository
 import com.example.ordermicroservice.vo.PaymentVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.springframework.http.MediaType
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.annotation.RetryableTopic
 import org.springframework.kafka.core.KafkaTemplate
@@ -22,6 +24,7 @@ import org.springframework.kafka.retrytopic.TopicSuffixingStrategy
 import org.springframework.kafka.support.Acknowledgment
 import org.springframework.retry.annotation.Backoff
 import org.springframework.stereotype.Service
+import org.springframework.web.client.RestClient
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter

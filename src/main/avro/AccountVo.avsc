@@ -1,0 +1,15 @@
+{
+  "name": "AccountVoMessage",
+  "namespace": "com.avro.account",
+  "type": "record",
+  "fields": [
+    {
+      "name": "accountNumber",
+      "type": "string"
+    },
+    {
+      "name": "balance",
+      "type": "long"
+    }
+  ]
+}
