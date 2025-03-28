@@ -2,8 +2,8 @@ POST http://localhost:8080/pay
 Content-Type: application/json
 
 {
-  "amount": 316900,
-  "paymentType": "현금",
-  "cardNumber": "",
-  "cardCvc": ""
+  "amount": 100,
+  "paymentType": "카드",
+  "cardNumber": "283-182-3728-38",
+  "cardCvc": "232"
 }

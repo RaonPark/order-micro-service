@@ -7,11 +7,10 @@ import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.PaymentType
 import com.example.ordermicroservice.document.Payments
 import com.example.ordermicroservice.document.ProcessStage
-import com.example.ordermicroservice.dto.DepositRequest
-import com.example.ordermicroservice.dto.SavePayRequest
-import com.example.ordermicroservice.dto.SavePayResponse
+import com.example.ordermicroservice.dto.*
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
 import com.example.ordermicroservice.repository.mongo.PaymentRepository
+import com.example.ordermicroservice.support.DateTimeSupport
 import com.example.ordermicroservice.vo.PaymentVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -40,6 +39,7 @@ class PaymentService(
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
+        val restClient = RestClient.create()
     }
     fun savePay(payment: SavePayRequest): SavePayResponse {
         val paymentId = generatePaymentId(payment)
@@ -103,10 +103,31 @@ class PaymentService(
         val payment = paymentRepository.findByPaymentId(outbox.paymentId)
             ?: throw RuntimeException("${outbox.paymentId}에 해당하는 결제정보가 없습니다!")
 
-        //  TODO: payment 알고리즘 추가 필요!
-        // TODO: return 값은 여러 가지를 포함하겠지만 타임스탬프는 항상 포함!
-        val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-        val payProcessedTime = Instant.now().atZone(ZoneId.of("Asia/Seoul")).format(formatter)
+        var processedTime = ""
+        if(payment.paymentType != PaymentType.CASH) {
+            //  TODO: payment 알고리즘 추가 필요!
+            // TODO: return 값은 여러 가지를 포함하겠지만 타임스탬프는 항상 포함!
+            val payResponse = restClient.post()
+                .uri("http://localhost:8080/withdraw")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(
+                    WithdrawRequest(
+                        accountNumber = "123-123-123-123",
+                        amount = payment.amount
+                    )
+                )
+                .retrieve()
+                .body(WithdrawResponse::class.java)
+                ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+
+            if (!payResponse.isValid || !payResponse.isCompleted) {
+                throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
+            }
+
+            processedTime = payResponse.processedTime
+        } else {
+            processedTime = DateTimeSupport.getNowTimeWithKoreaZoneAndFormatter()
+        }
 
         payment.processStage = ProcessStage.PROCESSED
         paymentRepository.save(payment)
@@ -114,7 +135,7 @@ class PaymentService(
         // send payment is finished.
         outbox.processStage = com.avro.support.ProcessStage.PROCESSED
 
-        val paymentStatus = buildPaymentStatus(payment.paymentId, payProcessedTime)
+        val paymentStatus = buildPaymentStatus(payment.paymentId, processedTime)
         paymentStatusTemplate.send(KafkaTopicNames.PAYMENT_STATUS, payment.paymentId, paymentStatus)
 
         ack.acknowledge()
