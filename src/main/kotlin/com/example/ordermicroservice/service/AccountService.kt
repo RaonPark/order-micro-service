@@ -7,6 +7,9 @@ import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.Accounts
 import com.example.ordermicroservice.dto.DepositRequest
 import com.example.ordermicroservice.dto.DepositResponse
+import com.example.ordermicroservice.dto.WithdrawRequest
+import com.example.ordermicroservice.dto.WithdrawResponse
+import com.example.ordermicroservice.support.DateTimeSupport
 import com.mongodb.client.result.UpdateResult
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
@@ -20,6 +23,8 @@ import org.springframework.data.mongodb.core.updateFirst
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.stereotype.Service
+import java.time.Instant
+import java.time.ZoneId
 
 @Service
 class AccountService(
@@ -90,6 +95,54 @@ class AccountService(
         )
 
         accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
+    }
+
+    @ExperimentalCoroutinesApi
+    suspend fun withdraw(withdrawRequest: WithdrawRequest): WithdrawResponse = coroutineScope {
+        val balance = withContext(Dispatchers.IO) {
+            redisService.getBalance(withdrawRequest.accountNumber)
+        }
+
+        if(balance == -1L) {
+            val account = accountMongoTemplate.findOne(
+                Query(Criteria.where("accountNumber").`is`(withdrawRequest.accountNumber)),
+                Accounts::class.java
+            ) ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
+
+            log.info { "First Withdraw! = $account" }
+
+            withContext(Dispatchers.IO) {
+                redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
+            }
+        }
+
+        withContext(Dispatchers.IO) {
+            redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
+        }
+
+        val accountRequestMessage = buildAccountRequestMessage(
+            accountNumber = withdrawRequest.accountNumber,
+            amount = withdrawRequest.amount,
+            type = AccountRequestType.WITHDRAW
+        )
+
+        accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, withdrawRequest.accountNumber,
+            accountRequestMessage)
+
+        WithdrawResponse.of(
+            isValid = true,
+            isCompleted = true,
+            balance = balance - withdrawRequest.amount,
+            processedTime = DateTimeSupport.getNowTimeWithKoreaZoneAndFormatter()
+        )
+    }
+
+    fun validateWithdraw(withdrawRequest: WithdrawRequest): Boolean {
+        val findQuery = Query(Criteria.where("accountNumber").`is`(withdrawRequest.accountNumber))
+        val account = accountMongoTemplate.findOne(findQuery, Accounts::class.java)
+            ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 없습니다.")
+
+        return account.balance >= withdrawRequest.amount
     }
 
     private fun buildAccountRequestMessage(accountNumber: String, amount: Long, type: AccountRequestType): AccountRequestMessage {
