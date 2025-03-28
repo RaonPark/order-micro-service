@@ -82,8 +82,8 @@ class KafkaAccountRequestStreamsConfig {
                 {
                     _, message, balance ->
                     when(message.requestType) {
-                        AccountRequestType.DEPOSIT -> balance + message.amount
-                        AccountRequestType.WITHDRAW -> balance - message.amount
+                        AccountRequestType.DEPOSIT -> message.amount
+                        AccountRequestType.WITHDRAW -> -message.amount
                         else -> balance
                     }
                 },

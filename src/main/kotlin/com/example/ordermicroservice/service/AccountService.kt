@@ -62,38 +62,34 @@ class AccountService(
 
     @ExperimentalCoroutinesApi
     suspend fun deposit(depositRequest: DepositRequest) = coroutineScope {
-        launch {
-            val balance = redisService.getBalance(depositRequest.accountNumber)
+        val balance = withContext(Dispatchers.IO) {
+            redisService.getBalance(depositRequest.accountNumber)
+        }
 
-            log.info { "deposit : $balance" }
+        log.info { "deposit : $balance" }
 
-            if(balance == -1L) {
-                val account = accountMongoTemplate.findOne(
-                    Query(Criteria.where("accountNumber").`is`(depositRequest.accountNumber)),
-                    Accounts::class.java
-                ) ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
-                log.info { "First Deposit! = $account" }
+        if(balance == -1L) {
+            val account = accountMongoTemplate.findOne(
+                Query(Criteria.where("accountNumber").`is`(depositRequest.accountNumber)),
+                Accounts::class.java
+            ) ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
+            log.info { "First Deposit! = $account" }
+            withContext(Dispatchers.IO) {
                 redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
             }
         }
 
-        launch {
+        withContext(Dispatchers.IO) {
             redisService.incrBalance(depositRequest.accountNumber, depositRequest.amount)
         }
 
-        launch {
-            val accountRequestMessage = buildAccountRequestMessage(
-                accountNumber = depositRequest.accountNumber,
-                amount = depositRequest.amount,
-                type = AccountRequestType.DEPOSIT
-            )
+        val accountRequestMessage = buildAccountRequestMessage(
+            accountNumber = depositRequest.accountNumber,
+            amount = depositRequest.amount,
+            type = AccountRequestType.DEPOSIT
+        )
 
-            accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
-        }
-
-        coroutineContext[Job]
-            ?.children
-            ?.forEach { it.join() }
+        accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
     }
 
     private fun buildAccountRequestMessage(accountNumber: String, amount: Long, type: AccountRequestType): AccountRequestMessage {
