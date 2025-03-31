@@ -94,7 +94,9 @@ class AccountService(
             type = AccountRequestType.DEPOSIT
         )
 
-        accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
+        accountRequestTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
+        }
     }
 
     @ExperimentalCoroutinesApi
@@ -126,8 +128,10 @@ class AccountService(
             type = AccountRequestType.WITHDRAW
         )
 
-        accountRequestTemplate.send(KafkaTopicNames.ACCOUNT_REQUEST, withdrawRequest.accountNumber,
-            accountRequestMessage)
+        accountRequestTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.ACCOUNT_REQUEST, withdrawRequest.accountNumber,
+                accountRequestMessage)
+        }
 
         WithdrawResponse.of(
             isValid = true,

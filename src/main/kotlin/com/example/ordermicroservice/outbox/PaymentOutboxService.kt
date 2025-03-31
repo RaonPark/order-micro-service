@@ -6,6 +6,7 @@ import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.ProcessStage
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
 import com.example.ordermicroservice.service.RedisService
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
@@ -16,6 +17,9 @@ class PaymentOutboxService(
     private val redisService: RedisService,
     private val paymentOutboxTemplate: KafkaTemplate<String, PaymentOutboxMessage>
 ) {
+    companion object {
+        val log = KotlinLogging.logger {  }
+    }
     fun pollingOutbox(): List<PaymentOutbox> {
         return paymentOutboxRepository.findByProcessStage(ProcessStage.BEFORE_PROCESS)
     }
@@ -27,7 +31,9 @@ class PaymentOutboxService(
             .setPaymentId(paymentOutbox.paymentId)
             .build()
 
-        paymentOutboxTemplate.send(KafkaTopicNames.PAYMENT_OUTBOX, outboxMessage.aggId, outboxMessage)
+        paymentOutboxTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.PAYMENT_OUTBOX, outboxMessage.aggId, outboxMessage)
+        }
     }
 
     @Scheduled(fixedRate = 5000L)
