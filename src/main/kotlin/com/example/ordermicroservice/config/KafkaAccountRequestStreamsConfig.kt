@@ -150,6 +150,7 @@ class KafkaAccountRequestStreamsConfig {
         listenerContainer.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
         listenerContainer.consumerFactory = accountResponseConsumerFactory()
         listenerContainer.setConcurrency(3)
+        listenerContainer.containerProperties.eosMode = ContainerProperties.EOSMode.V2
 
         return listenerContainer
     }

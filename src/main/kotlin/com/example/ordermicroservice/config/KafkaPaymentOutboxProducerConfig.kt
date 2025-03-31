@@ -29,7 +29,9 @@ class KafkaPaymentOutboxProducerConfig {
         config[ProducerConfig.COMPRESSION_TYPE_CONFIG] = "snappy"
         config[ProducerConfig.LINGER_MS_CONFIG] = 20
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "payment.outbox.tx"
+        config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "5000"
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
+        config[ProducerConfig.RETRIES_CONFIG] = Integer.MAX_VALUE.toString()
 
         val producerFactory = DefaultKafkaProducerFactory<String, PaymentOutboxMessage>(config)
         // Greater Than Concurrency if ConcurrentKafkaContainerListener used.
