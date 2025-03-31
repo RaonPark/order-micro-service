@@ -10,6 +10,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 import java.time.ZoneId
 
@@ -27,15 +28,16 @@ class OrderOutboxService(
 
     fun outboxPublishing(orderOutbox: OrderOutbox) {
         val orderOutboxMessage = outboxToAvro(orderOutbox)
-        val sendResult = orderOutboxTemplate.send(KafkaTopicNames.ORDER_OUTBOX, orderOutbox.orderId, orderOutboxMessage)
-            .whenComplete { result, exception ->
-                if(exception != null) {
-                    log.info { "$exception 발생" }
-                }
-                log.info { "$orderOutboxMessage 가 카프카 프로듀서에 의해 퍼블리싱 됩니다. => processStage = ${orderOutboxMessage.processStage}" }
-                log.info { "Order Outbox Producer Metadata: ${Instant.ofEpochMilli(result.recordMetadata.timestamp()).atZone(
-                    ZoneId.of("Asia/Seoul"))}" }
+        val sendResult = orderOutboxTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.ORDER_OUTBOX, orderOutbox.orderId, orderOutboxMessage)
+        }.whenComplete { result, exception ->
+            if(exception != null) {
+                log.info { "$exception 발생" }
             }
+            log.info { "$orderOutboxMessage 가 카프카 프로듀서에 의해 퍼블리싱 됩니다. => processStage = ${orderOutboxMessage.processStage}" }
+            log.info { "Order Outbox Producer Metadata: ${Instant.ofEpochMilli(result.recordMetadata.timestamp()).atZone(
+                ZoneId.of("Asia/Seoul"))}" }
+        }
 
         sendResult.join()
     }

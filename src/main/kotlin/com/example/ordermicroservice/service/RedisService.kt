@@ -54,6 +54,15 @@ class RedisService(
         return objectMapper.readValue(payment, PaymentVo::class.java)
     }
 
+    fun saveGatewayNumber(userId: String, gateway: String) {
+        redisTemplate.opsForHash<String, String>().put("gateway", userId, gateway)
+    }
+
+    fun getGatewayNumber(userId: String, gateway: String): String {
+        return redisTemplate.opsForHash<String, String>().get("gateway", userId)
+            ?: throw RuntimeException("$userId 는 $gateway 에 연결되어 있지 않습니다.")
+    }
+
     @Scheduled(fixedRate = 1000 * 3600)
     fun initiateRandom() = numericRedisTemplate.opsForValue().set("random", 0L)
 

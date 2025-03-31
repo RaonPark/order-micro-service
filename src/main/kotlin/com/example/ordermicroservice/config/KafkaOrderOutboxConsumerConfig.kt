@@ -32,7 +32,6 @@ class KafkaOrderOutboxConsumerConfig {
         config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
-        config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
 
         return DefaultKafkaConsumerFactory(config)
     }
