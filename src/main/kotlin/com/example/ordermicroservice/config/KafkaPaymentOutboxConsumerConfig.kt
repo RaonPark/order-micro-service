@@ -42,6 +42,7 @@ class KafkaPaymentOutboxConsumerConfig {
         listenerContainer.setConcurrency(3)
         listenerContainer.consumerFactory = paymentOutboxConsumerFactory()
         listenerContainer.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
+        listenerContainer.containerProperties.eosMode = ContainerProperties.EOSMode.V2
 
         return listenerContainer
     }

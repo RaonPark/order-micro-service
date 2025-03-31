@@ -32,6 +32,7 @@ class KafkaOrderOutboxConsumerConfig {
         config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
+        config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
 
         return DefaultKafkaConsumerFactory(config)
     }
@@ -43,6 +44,7 @@ class KafkaOrderOutboxConsumerConfig {
         // enable.auto.commit 을 false 로 설정했고, ack 을 매뉴얼하게 보내기 위해 설정한다.
         listener.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
         listener.setConcurrency(3)
+        listener.containerProperties.eosMode = ContainerProperties.EOSMode.V2
 
         return listener
     }
