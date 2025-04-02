@@ -5,7 +5,6 @@ import com.avro.account.AccountRequestType
 import com.avro.account.AccountVoMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.outbox.AvroService
-import com.example.ordermicroservice.vo.AccountVo
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
 import io.confluent.kafka.serializers.KafkaAvroDeserializer
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig
@@ -25,12 +24,12 @@ import org.apache.kafka.streams.StreamsBuilder
 import org.apache.kafka.streams.StreamsConfig
 import org.apache.kafka.streams.kstream.*
 import org.apache.kafka.streams.state.WindowStore
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import org.springframework.kafka.annotation.EnableKafkaStreams
-import org.springframework.kafka.annotation.KafkaStreamsDefaultConfiguration
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
 import org.springframework.kafka.config.KafkaStreamsConfiguration
+import org.springframework.kafka.config.StreamsBuilderFactoryBean
 import org.springframework.kafka.core.ConsumerFactory
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory
 import org.springframework.kafka.core.DefaultKafkaProducerFactory
@@ -38,14 +37,15 @@ import org.springframework.kafka.core.DefaultTransactionIdSuffixStrategy
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.core.ProducerFactory
 import org.springframework.kafka.listener.ContainerProperties
-import org.springframework.kafka.support.serializer.JsonSerde
 import java.time.Duration
 
-@EnableKafkaStreams
 @Configuration
 class KafkaAccountRequestStreamsConfig {
-    @Bean(name = [KafkaStreamsDefaultConfiguration.DEFAULT_STREAMS_CONFIG_BEAN_NAME])
-    fun accountRequestStreamsConfig(): KafkaStreamsConfiguration {
+    companion object {
+        const val ACCOUNT_REQUEST_STREAMS_BUILDER = "accountRequestStreamsBuilder"
+    }
+    @Bean(name = [ACCOUNT_REQUEST_STREAMS_BUILDER])
+    fun accountRequestStreamsConfig(): StreamsBuilderFactoryBean {
         val config = mapOf(
             StreamsConfig.CLIENT_ID_CONFIG to "ACCOUNT_REQUEST_STREAMS",
             StreamsConfig.APPLICATION_ID_CONFIG to "ACCOUNT_REQUEST_APP",
@@ -64,14 +64,16 @@ class KafkaAccountRequestStreamsConfig {
             AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
         )
 
-        return KafkaStreamsConfiguration(config)
+        return StreamsBuilderFactoryBean(KafkaStreamsConfiguration(config))
     }
 
     @Bean
-    fun accountRequestQueueStreams(streamsBuilder: StreamsBuilder): KStream<String, AccountRequestMessage> {
-        val accountRequestMessageAvroSerde = AvroService.getAvroSerde<AccountRequestMessage>(AccountRequestMessage::class.java.name)
-        val accountVoAvroSerde = AvroService.getAvroSerde<AccountVoMessage>(AccountVoMessage::class.java.name)
-        val stream = streamsBuilder.stream(KafkaTopicNames.ACCOUNT_REQUEST,
+    fun accountRequestQueueStreams(
+        @Qualifier(ACCOUNT_REQUEST_STREAMS_BUILDER) accountRequestStreamsConfig: StreamsBuilder
+    ): KStream<String, AccountRequestMessage> {
+        val accountRequestMessageAvroSerde = AvroService.getAvroSerde<AccountRequestMessage>()
+        val accountVoAvroSerde = AvroService.getAvroSerde<AccountVoMessage>()
+        val stream = accountRequestStreamsConfig.stream(KafkaTopicNames.ACCOUNT_REQUEST,
             Consumed.with(StringSerde(), accountRequestMessageAvroSerde))
 
         stream.groupBy({ _, accountRequestMessage ->

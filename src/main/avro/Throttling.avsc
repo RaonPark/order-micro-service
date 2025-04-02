@@ -1,0 +1,22 @@
+{
+  "name": "ThrottlingRequest",
+  "namespace": "com.avro.support",
+  "type": "record",
+  "fields": [
+    {
+      "name": "requestMethod",
+      "type": "string"
+    },
+    {
+      "name": "apiName",
+      "type": "string"
+    },
+    {
+      "name": "timestamp",
+      "type": {
+        "type": "long",
+        "logical-type": "timestamp-millis"
+      }
+    }
+  ]
+}

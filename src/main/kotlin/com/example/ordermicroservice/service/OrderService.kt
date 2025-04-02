@@ -129,7 +129,9 @@ class OrderService(
         }
 
         val shippingMessage = generateShippingMessage(orderId = outbox.orderId)
-        shippingTemplate.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
+        shippingTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
+        }
 
         log.info { "${shippingMessage.orderId}가 배달 서비스로 퍼블리싱되었습니다." }
 
@@ -144,14 +146,14 @@ class OrderService(
             ?: throw RuntimeException("${orderId}에 해당하는 주문이 없습니다!")
 
         val sellerRestClient = RestClient.create("http://localhost:8080")
-        val seller = sellerRestClient.get().uri("/seller?sellerId={sellerId}", order.sellerId)
+        val seller = sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
             .accept(MediaType.APPLICATION_JSON)
             .retrieve()
             .body<GetSellerResponse>()
             ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
 
         val userRestClient = RestClient.create("http://localhost:8080")
-        val user = userRestClient.get().uri("/user?userId={userId}", order.userId)
+        val user = userRestClient.get().uri("/service/user?userId={userId}", order.userId)
             .accept(MediaType.APPLICATION_JSON)
             .retrieve()
             .body<GetUserResponse>()

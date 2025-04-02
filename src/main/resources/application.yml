@@ -14,3 +14,4 @@ logging:
     org.apache.kafka: WARN
     org.springframework.kafka.support.serializer: DEBUG
     io.confluent.kafka.serializers: DEBUG
+    org.apache.avro: WARN
