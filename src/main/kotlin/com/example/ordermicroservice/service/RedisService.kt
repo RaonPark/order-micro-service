@@ -20,6 +20,14 @@ class RedisService(
         val log = KotlinLogging.logger {  }
     }
 
+    fun saveTimestamp(timestamp: Long) {
+        numericRedisTemplate.opsForValue().set("timestamp", timestamp)
+    }
+
+    fun getTimestamp(): Long {
+        return numericRedisTemplate.opsForValue().get("timestamp") ?: 0L
+    }
+
     fun saveUserVo(userId: String, user: UserVo) {
         val userVo = objectMapper.writeValueAsString(user)
         redisTemplate.opsForValue().setIfAbsent(userId, userVo, Duration.ofMinutes(30))

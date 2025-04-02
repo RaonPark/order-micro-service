@@ -12,6 +12,21 @@
       "type": "string"
     },
     {
+      "name": "header",
+      "type": {
+        "type": "map",
+        "values": "string"
+      }
+    },
+    {
+      "name": "body",
+      "type": "string"
+    },
+    {
+      "name": "requested",
+      "type": "long"
+    },
+    {
       "name": "timestamp",
       "type": {
         "type": "long",

@@ -36,6 +36,10 @@ class ShippingService(
         shippingRepository.save(shipping)
         log.info { "$shipping 에 대한 배송정보가 저장되었습니다." }
 
+        val timestamp = redisService.getTimestamp()
+        val ms = System.currentTimeMillis() - timestamp
+        log.info { "걸린 시간 = $ms ms" }
+
         ack.acknowledge()
     }
 

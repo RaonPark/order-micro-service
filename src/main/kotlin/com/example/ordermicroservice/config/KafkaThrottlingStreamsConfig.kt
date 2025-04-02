@@ -5,6 +5,8 @@ import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.gateway.FixedWindowThrottlingProcessor
 import com.example.ordermicroservice.outbox.AvroService
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
+import io.confluent.kafka.serializers.KafkaAvroDeserializer
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerde
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerializer
@@ -69,7 +71,7 @@ class KafkaThrottlingStreamsConfig {
 
         streams.process(FixedWindowThrottlingProcessor())
             .filter { _, value -> value != null }
-            .to(KafkaTopicNames.THROTTLING_RESPONSE, Produced.with(StringSerde(), LongSerde()))
+            .to(KafkaTopicNames.THROTTLING_RESPONSE, Produced.with(StringSerde(), throttlingRequestAvroSerde))
 
         return streams
     }
@@ -101,25 +103,29 @@ class KafkaThrottlingStreamsConfig {
     }
 
     @Bean
-    fun throttlingResponseConsumerFactory(): ConsumerFactory<String, Long> {
+    fun throttlingResponseConsumerFactory(): ConsumerFactory<String, ThrottlingRequest> {
         val config = mapOf(
             ConsumerConfig.GROUP_ID_CONFIG to "throttling.response.group",
             ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
             ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG to StringDeserializer::class.java,
             ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG to ErrorHandlingDeserializer::class.java,
-            ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS to LongDeserializer::class.java,
+            ErrorHandlingDeserializer.VALUE_DESERIALIZER_CLASS to KafkaAvroDeserializer::class.java,
+            KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
+            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to "true",
+            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG to ThrottlingRequest::class.java,
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
+            ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
         )
 
         return DefaultKafkaConsumerFactory(config)
     }
 
     @Bean
-    fun throttlingResponseListenerContainer(): ConcurrentKafkaListenerContainerFactory<String, Long> {
-        val listenerContainer = ConcurrentKafkaListenerContainerFactory<String, Long>()
+    fun throttlingResponseListenerContainer(): ConcurrentKafkaListenerContainerFactory<String, ThrottlingRequest> {
+        val listenerContainer = ConcurrentKafkaListenerContainerFactory<String, ThrottlingRequest>()
         listenerContainer.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
         listenerContainer.consumerFactory = throttlingResponseConsumerFactory()
         listenerContainer.setConcurrency(3)

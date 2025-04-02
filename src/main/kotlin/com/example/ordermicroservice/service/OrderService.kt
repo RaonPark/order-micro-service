@@ -30,6 +30,7 @@ import org.springframework.web.client.body
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.*
 import java.util.concurrent.CompletableFuture
 
 @Service
@@ -43,27 +44,22 @@ class OrderService(
         val log = KotlinLogging.logger {  }
     }
     fun createOrder(order: CreateOrderRequest): CreateOrderResponse {
-        val savedOrder = CompletableFuture.supplyAsync {
-            val orderEntity = Orders.of(
-                id = null,
-                userId = order.userId,
-                orderNumber = generateOrderNumber(order.userId),
-                orderedTime = getNowTime(),
-                products = order.products,
-                sellerId = order.sellerId
-            )
-            val savedOrder = orderRepository.save(orderEntity)
-            savedOrder
-        }.thenApply {
-            val aggId = redisService.getAggregatorId()
-            val processStage = ProcessStage.BEFORE_PROCESS
-            val outbox = OrderOutbox.of(id = null, aggId = aggId.toString(),
-                processStage =  processStage, orderId = it.orderNumber)
+        val orderEntity = Orders.of(
+            id = null,
+            userId = order.userId,
+            orderNumber = generateOrderNumber(order.userId),
+            orderedTime = getNowTime(),
+            products = order.products,
+            sellerId = order.sellerId
+        )
+        val savedOrder = orderRepository.save(orderEntity)
 
-            orderOutboxRepository.save(outbox)
+        val aggId = redisService.getAggregatorId()
+        val processStage = ProcessStage.BEFORE_PROCESS
+        val outbox = OrderOutbox.of(id = null, aggId = aggId.toString(),
+            processStage =  processStage, orderId = savedOrder.orderNumber)
 
-            it
-        }.join()
+        orderOutboxRepository.save(outbox)
 
         return CreateOrderResponse.of(
             orderNumber = savedOrder.orderNumber,
@@ -80,7 +76,8 @@ class OrderService(
     private fun generateOrderNumber(userId: String): String {
         val orderedTime = Instant.now().toEpochMilli().toHexString()
         val snowflake = userId.take(8)
-        return orderedTime.plus(snowflake)
+        val randomUUID = UUID.randomUUID().toString()
+        return orderedTime.plus(snowflake).plus(randomUUID.substring(5))
     }
 
     private fun getNowTime(): String {

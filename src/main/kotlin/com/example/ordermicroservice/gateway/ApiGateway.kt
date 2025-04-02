@@ -6,6 +6,7 @@ import com.example.ordermicroservice.dto.CreateOrderRequest
 import com.example.ordermicroservice.dto.CreateOrderResponse
 import com.example.ordermicroservice.dto.SavePayResponse
 import com.example.ordermicroservice.service.RedisService
+import com.fasterxml.jackson.core.type.TypeReference
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
@@ -15,6 +16,8 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.util.LinkedMultiValueMap
+import org.springframework.util.MultiValueMap
 import org.springframework.util.StreamUtils
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -58,28 +61,24 @@ class ApiGateway (
         val request = ThrottlingRequest.newBuilder()
             .setRequestMethod(httpServletRequest.method)
             .setApiName(requestUri)
+            .setHeader(header)
+            .setBody(body)
+            .setRequested(1L)
             .setTimestamp(System.currentTimeMillis())
             .build()
+
         throttlingRequestTemplate.executeInTransaction {
             it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
         }
-
-        if(GatewayRouter.orderRouter(requestUri)) {
-            val result = routePost<CreateOrderResponse>(requestUri, header, body)
-            log.info { "결과 = $result" }
-        } else if(GatewayRouter.payRouter(requestUri)) {
-            val result = routePost<SavePayResponse>(requestUri, header, body)
-            log.info { "결과 = $result" }
-        }
     }
 
-    private fun getHeaders(httpServletRequest: HttpServletRequest): Consumer<HttpHeaders> {
-        val headers = Consumer<HttpHeaders> {
-            for(headerName in httpServletRequest.headerNames) {
-                it.set(headerName, httpServletRequest.getHeader(headerName))
-            }
+    private fun getHeaders(httpServletRequest: HttpServletRequest): Map<String, String> {
+        val headerMap = mutableMapOf<String, String>()
+        httpServletRequest.headerNames.toList().forEach {headerName ->
+            headerMap[headerName] = httpServletRequest.getHeader(headerName)
         }
-        return headers
+
+        return headerMap
     }
 
     // inline 함수는 컴파일 시에 실제 코드가 들어가게 된다.
@@ -104,14 +103,30 @@ class ApiGateway (
         containerFactory = "throttlingResponseListenerContainer",
         groupId = "throttling.response.group"
     )
-    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, Long>) {
+    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, ThrottlingRequest>) {
         val requests = record.value()
 
-        if(requests > 150L) {
+        if(requests.requested > 150L) {
             log.info { "일시적으로 사용량이 너무 많습니다. 다시 시도해주세요." }
             return
         } else {
-            log.info { "API 호출 횟수 : $requests" }
+            log.info { "API 호출 횟수 : ${requests.requested}" }
+
+            if(GatewayRouter.orderRouter(requests.apiName)) {
+                val header = map2HttpHeaderConsumer(requests.header)
+                val result = routePost<CreateOrderResponse>(requests.apiName, header, requests.body)
+                log.info { "결과 = $result" }
+            } else if(GatewayRouter.payRouter(requests.apiName)) {
+                val header = map2HttpHeaderConsumer(requests.header)
+                val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
+                log.info { "결과 = $result" }
+            }
+        }
+    }
+
+    private fun map2HttpHeaderConsumer(header: Map<String, String>): Consumer<HttpHeaders> {
+        return Consumer { httpHeaders ->
+            header.forEach { (key, value) -> httpHeaders.set(key, value) }
         }
     }
 }

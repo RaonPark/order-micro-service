@@ -1,4 +1,4 @@
-POST http://localhost:8080/gateway/service/createOrder
+POST http://localhost:8080/gateway/service/testOrder
 Content-Type: application/json
 
 {
