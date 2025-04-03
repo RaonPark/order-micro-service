@@ -50,7 +50,7 @@ class OrderOutboxService(
             .build()
     }
 
-    @Scheduled(fixedRate = 5000L)
+    @Scheduled(fixedRate = 3000L)
     fun processOrderOutbox() {
         val orderOutboxes = outboxPolling()
 

@@ -4,16 +4,14 @@ import com.avro.order.OrderOutboxMessage
 import com.avro.shipping.ShippingMessage
 import com.avro.support.geojson.Location
 import com.example.ordermicroservice.constants.KafkaTopicNames
-import com.example.ordermicroservice.document.OrderOutbox
-import com.example.ordermicroservice.document.Orders
-import com.example.ordermicroservice.document.ProcessStage
-import com.example.ordermicroservice.document.Products
+import com.example.ordermicroservice.document.*
 import com.example.ordermicroservice.dto.CreateOrderRequest
 import com.example.ordermicroservice.dto.CreateOrderResponse
 import com.example.ordermicroservice.dto.GetSellerResponse
 import com.example.ordermicroservice.dto.GetUserResponse
 import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
+import com.example.ordermicroservice.vo.OrderCompensation
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.http.MediaType
@@ -31,7 +29,6 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.*
-import java.util.concurrent.CompletableFuture
 
 @Service
 class OrderService(
@@ -50,6 +47,7 @@ class OrderService(
             orderNumber = generateOrderNumber(order.userId),
             orderedTime = getNowTime(),
             products = order.products,
+            serviceProcessStage = ServiceProcessStage.NOT_PROCESS,
             sellerId = order.sellerId
         )
         val savedOrder = orderRepository.save(orderEntity)
@@ -75,9 +73,8 @@ class OrderService(
     @OptIn(ExperimentalStdlibApi::class)
     private fun generateOrderNumber(userId: String): String {
         val orderedTime = Instant.now().toEpochMilli().toHexString()
-        val snowflake = userId.take(8)
-        val randomUUID = UUID.randomUUID().toString()
-        return orderedTime.plus(snowflake).plus(randomUUID.substring(5))
+        val snowflake = UUID.randomUUID().toString().take(5)
+        return orderedTime.plus(userId).plus(snowflake)
     }
 
     private fun getNowTime(): String {
@@ -102,8 +99,8 @@ class OrderService(
     @KafkaListener(topics = ["order-outbox.topic"],
         groupId = "ORDER_OUTBOX",
         containerFactory = "orderOutboxListenerContainer",
-        concurrency = "3",
-        )
+        concurrency = "3"
+    )
     fun processOrder(record: ConsumerRecord<String, OrderOutboxMessage>, ack: Acknowledgment) {
         val outbox = record.value()
 
@@ -168,5 +165,31 @@ class OrderService(
             .setSellerLocationString(seller.address)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
             .build()
+    }
+
+    @KafkaListener(
+        topics = [KafkaTopicNames.ORDER_COMPENSATION],
+        concurrency = "3",
+        containerFactory = "orderCompensationListenerContainerFactory",
+        groupId = "ORDER_COMPENSATION"
+    )
+    fun orderCompensation(record: ConsumerRecord<String, OrderCompensation>, ack: Acknowledgment) {
+        val order = record.value()
+
+        log.info { "${order.exceptionStep}에서 오류가 발생했습니다." }
+
+        val txOrder = orderRepository.findByOrderNumber(order.orderNumber)
+            ?: throw RuntimeException("${order.orderNumber} 에 해당하는 주문이 없습니다.")
+        txOrder.processed = ServiceProcessStage.EXCEPTION
+        orderRepository.save(txOrder)
+
+        val outbox = orderOutboxRepository.findByOrderId(order.orderNumber)
+            ?: throw RuntimeException("Order Outbox 에 해당 $order.orderNumber 주문이 없습니다.")
+
+        outbox.processStage = ProcessStage.EXCEPTION
+
+        orderOutboxRepository.save(outbox)
+
+        ack.acknowledge()
     }
 }

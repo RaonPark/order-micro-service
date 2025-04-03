@@ -1,7 +1,6 @@
 package com.example.ordermicroservice.controller
 
 import com.example.ordermicroservice.dto.CreateOrderRequest
-import com.example.ordermicroservice.dto.CreateOrderResponse
 import com.example.ordermicroservice.service.OrderService
 import com.example.ordermicroservice.service.RedisService
 import com.example.ordermicroservice.support.ServiceController
@@ -11,8 +10,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.Executors
 
 @ServiceController
 class TestController(
@@ -30,7 +27,7 @@ class TestController(
             log.info { "start time = $startTime" }
             val jobs = List(1_000) {
                 launch(Dispatchers.IO) {
-                    orderService.createOrder(orderRequest)
+                    orderService.createOrder(orderRequest,)
                 }
             }
 

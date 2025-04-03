@@ -4,10 +4,12 @@ import com.avro.shipping.ShippingMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.Shipping
 import com.example.ordermicroservice.repository.mongo.ShippingRepository
+import com.example.ordermicroservice.vo.OrderCompensation
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint
 import org.springframework.kafka.annotation.KafkaListener
+import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.Acknowledgment
 import org.springframework.stereotype.Service
 
@@ -15,7 +17,7 @@ import org.springframework.stereotype.Service
 class ShippingService(
     private val shippingRepository: ShippingRepository,
     private val redisService: RedisService,
-//    private val shippingTemplate: KafkaTemplate<String, ShippingMessage>
+    private val orderCompensationKafkaTemplate: KafkaTemplate<String, OrderCompensation>
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -31,6 +33,16 @@ class ShippingService(
     fun processShipping(record: ConsumerRecord<String, ShippingMessage>, ack: Acknowledgment) {
         val orderNumber = record.key()
         val shippingMessage = record.value()
+
+        if(record.timestamp() % 2 == 0L) {
+            orderCompensationKafkaTemplate.executeInTransaction {
+                it.send(KafkaTopicNames.ORDER_COMPENSATION, orderNumber, OrderCompensation(
+                    orderNumber = orderNumber, exceptionStep = "SHIPPING"
+                ))
+            }
+            return
+        }
+
         val shipping = buildShipping(orderNumber, shippingMessage)
 
         shippingRepository.save(shipping)

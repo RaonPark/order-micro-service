@@ -5,4 +5,5 @@ import org.springframework.data.mongodb.repository.MongoRepository
 
 interface OrderRepository: MongoRepository<Orders, String> {
     fun findByOrderNumber(orderNumber: String): Orders?
+    fun deleteByOrderNumber(orderNumber: String)
 }

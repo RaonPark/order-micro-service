@@ -34,7 +34,6 @@ class PaymentService(
     private val paymentRepository: PaymentRepository,
     private val paymentOutboxRepository: PaymentOutboxRepository,
     private val redisService: RedisService,
-    private val paymentOutboxTemplate: KafkaTemplate<String, PaymentOutboxMessage>,
     private val paymentStatusTemplate: KafkaTemplate<String, PaymentStatusMessage>,
 ) {
     companion object {
@@ -91,7 +90,8 @@ class PaymentService(
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_OUTBOX],
         groupId = "PAYMENT_OUTBOX",
         containerFactory = "paymentOutboxListenerContainer",
-        concurrency = "3")
+        concurrency = "3"
+    )
     fun processOutbox(record: ConsumerRecord<String, PaymentOutboxMessage>, ack: Acknowledgment) {
         val outbox = record.value()
 
@@ -153,10 +153,8 @@ class PaymentService(
         groupId = "PAYMENT_STATUS",
         concurrency = "3",
         containerFactory = "paymentStatusListenerContainer"
-        )
-    fun sendPaymentStatus(
-        record: ConsumerRecord<String, PaymentStatusMessage>,
-    ) {
+    )
+    fun sendPaymentStatus(record: ConsumerRecord<String, PaymentStatusMessage>) {
         val paymentStatus = record.value()
 
         log.info { "${paymentStatus.paymentId}에 대한 결제가 완료되었습니다." }
