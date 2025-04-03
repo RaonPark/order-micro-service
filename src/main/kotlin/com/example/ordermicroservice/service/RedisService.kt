@@ -20,6 +20,14 @@ class RedisService(
         val log = KotlinLogging.logger {  }
     }
 
+    fun saveTimestamp(timestamp: Long) {
+        numericRedisTemplate.opsForValue().set("timestamp", timestamp)
+    }
+
+    fun getTimestamp(): Long {
+        return numericRedisTemplate.opsForValue().get("timestamp") ?: 0L
+    }
+
     fun saveUserVo(userId: String, user: UserVo) {
         val userVo = objectMapper.writeValueAsString(user)
         redisTemplate.opsForValue().setIfAbsent(userId, userVo, Duration.ofMinutes(30))
@@ -52,6 +60,15 @@ class RedisService(
     fun deletePayment(aggId: String): PaymentVo {
         val payment = redisTemplate.opsForHash<String, Any>().get("payment", aggId) as String
         return objectMapper.readValue(payment, PaymentVo::class.java)
+    }
+
+    fun saveGatewayNumber(userId: String, gateway: String) {
+        redisTemplate.opsForHash<String, String>().put("gateway", userId, gateway)
+    }
+
+    fun getGatewayNumber(userId: String, gateway: String): String {
+        return redisTemplate.opsForHash<String, String>().get("gateway", userId)
+            ?: throw RuntimeException("$userId 는 $gateway 에 연결되어 있지 않습니다.")
     }
 
     @Scheduled(fixedRate = 1000 * 3600)

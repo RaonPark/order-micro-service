@@ -30,6 +30,7 @@ import org.springframework.web.client.body
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.*
 import java.util.concurrent.CompletableFuture
 
 @Service
@@ -43,27 +44,22 @@ class OrderService(
         val log = KotlinLogging.logger {  }
     }
     fun createOrder(order: CreateOrderRequest): CreateOrderResponse {
-        val savedOrder = CompletableFuture.supplyAsync {
-            val orderEntity = Orders.of(
-                id = null,
-                userId = order.userId,
-                orderNumber = generateOrderNumber(order.userId),
-                orderedTime = getNowTime(),
-                products = order.products,
-                sellerId = order.sellerId
-            )
-            val savedOrder = orderRepository.save(orderEntity)
-            savedOrder
-        }.thenApply {
-            val aggId = redisService.getAggregatorId()
-            val processStage = ProcessStage.BEFORE_PROCESS
-            val outbox = OrderOutbox.of(id = null, aggId = aggId.toString(),
-                processStage =  processStage, orderId = it.orderNumber)
+        val orderEntity = Orders.of(
+            id = null,
+            userId = order.userId,
+            orderNumber = generateOrderNumber(order.userId),
+            orderedTime = getNowTime(),
+            products = order.products,
+            sellerId = order.sellerId
+        )
+        val savedOrder = orderRepository.save(orderEntity)
 
-            orderOutboxRepository.save(outbox)
+        val aggId = redisService.getAggregatorId()
+        val processStage = ProcessStage.BEFORE_PROCESS
+        val outbox = OrderOutbox.of(id = null, aggId = aggId.toString(),
+            processStage =  processStage, orderId = savedOrder.orderNumber)
 
-            it
-        }.join()
+        orderOutboxRepository.save(outbox)
 
         return CreateOrderResponse.of(
             orderNumber = savedOrder.orderNumber,
@@ -80,7 +76,8 @@ class OrderService(
     private fun generateOrderNumber(userId: String): String {
         val orderedTime = Instant.now().toEpochMilli().toHexString()
         val snowflake = userId.take(8)
-        return orderedTime.plus(snowflake)
+        val randomUUID = UUID.randomUUID().toString()
+        return orderedTime.plus(snowflake).plus(randomUUID.substring(5))
     }
 
     private fun getNowTime(): String {
@@ -129,7 +126,9 @@ class OrderService(
         }
 
         val shippingMessage = generateShippingMessage(orderId = outbox.orderId)
-        shippingTemplate.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
+        shippingTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
+        }
 
         log.info { "${shippingMessage.orderId}가 배달 서비스로 퍼블리싱되었습니다." }
 
@@ -144,14 +143,14 @@ class OrderService(
             ?: throw RuntimeException("${orderId}에 해당하는 주문이 없습니다!")
 
         val sellerRestClient = RestClient.create("http://localhost:8080")
-        val seller = sellerRestClient.get().uri("/seller?sellerId={sellerId}", order.sellerId)
+        val seller = sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
             .accept(MediaType.APPLICATION_JSON)
             .retrieve()
             .body<GetSellerResponse>()
             ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
 
         val userRestClient = RestClient.create("http://localhost:8080")
-        val user = userRestClient.get().uri("/user?userId={userId}", order.userId)
+        val user = userRestClient.get().uri("/service/user?userId={userId}", order.userId)
             .accept(MediaType.APPLICATION_JSON)
             .retrieve()
             .body<GetUserResponse>()

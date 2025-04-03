@@ -41,6 +41,7 @@ class KafkaShippingConsumerConfig {
         listener.consumerFactory = shippingConsumerConfig()
         listener.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
         listener.setConcurrency(3)
+        listener.containerProperties.eosMode = ContainerProperties.EOSMode.V2
 
         return listener
     }

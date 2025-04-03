@@ -64,4 +64,22 @@ class KafkaTopicConfig {
             .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
             .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
             .build()
+
+    @Bean
+    fun throttlingRequestTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.THROTTLING_REQUEST)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun throttlingResponseTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.THROTTLING_RESPONSE)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
 }

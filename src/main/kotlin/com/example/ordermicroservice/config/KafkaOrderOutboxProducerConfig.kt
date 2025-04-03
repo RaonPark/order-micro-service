@@ -8,6 +8,7 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.kafka.core.DefaultKafkaProducerFactory
+import org.springframework.kafka.core.DefaultTransactionIdSuffixStrategy
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.core.ProducerFactory
 
@@ -32,10 +33,14 @@ class KafkaOrderOutboxProducerConfig {
         // 20ms 의 레코드가 찰 시간을 준다.
         config[ProducerConfig.LINGER_MS_CONFIG] = 20
         // Guarantees Idempotent
-        config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "ORDER_OUTBOX_TX"
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
+        config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "order.outbox.tx"
+        config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
 
-        return DefaultKafkaProducerFactory(config)
+        val producerFactory = DefaultKafkaProducerFactory<String, OrderOutboxMessage>(config)
+        producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))
+
+        return producerFactory
     }
 
     @Bean

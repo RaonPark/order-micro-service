@@ -9,6 +9,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.kafka.annotation.EnableKafka
 import org.springframework.kafka.core.DefaultKafkaProducerFactory
+import org.springframework.kafka.core.DefaultTransactionIdSuffixStrategy
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.core.ProducerFactory
 
@@ -27,8 +28,13 @@ class KafkaShippingProducerConfig {
         config[ProducerConfig.BATCH_SIZE_CONFIG] = 32 * 1024 // 32KB
         config[ProducerConfig.COMPRESSION_TYPE_CONFIG] = "snappy"
         config[ProducerConfig.LINGER_MS_CONFIG] = 20
+        config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "shipping-tx"
+        config[ProducerConfig.RETRIES_CONFIG] = Integer.MAX_VALUE.toString()
+        config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "5000"
 
-        return DefaultKafkaProducerFactory(config)
+        val producerFactory = DefaultKafkaProducerFactory<String, ShippingMessage>(config)
+        producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))
+        return producerFactory
     }
 
     @Bean

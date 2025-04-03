@@ -44,6 +44,7 @@ class KafkaOrderOutboxConsumerConfig {
         // enable.auto.commit 을 false 로 설정했고, ack 을 매뉴얼하게 보내기 위해 설정한다.
         listener.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
         listener.setConcurrency(3)
+        listener.containerProperties.eosMode = ContainerProperties.EOSMode.V2
 
         return listener
     }
