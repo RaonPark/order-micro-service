@@ -34,14 +34,14 @@ class ShippingService(
         val orderNumber = record.key()
         val shippingMessage = record.value()
 
-        if(record.timestamp() % 2 == 0L) {
-            orderCompensationKafkaTemplate.executeInTransaction {
-                it.send(KafkaTopicNames.ORDER_COMPENSATION, orderNumber, OrderCompensation(
-                    orderNumber = orderNumber, exceptionStep = "SHIPPING"
-                ))
-            }
-            return
-        }
+//        if(record.timestamp() % 2 == 0L) {
+//            orderCompensationKafkaTemplate.executeInTransaction {
+//                it.send(KafkaTopicNames.ORDER_COMPENSATION, orderNumber, OrderCompensation(
+//                    orderNumber = orderNumber, exceptionStep = "SHIPPING"
+//                ))
+//            }
+//            return
+//        }
 
         val shipping = buildShipping(orderNumber, shippingMessage)
 

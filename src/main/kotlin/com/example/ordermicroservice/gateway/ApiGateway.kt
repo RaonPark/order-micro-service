@@ -16,6 +16,7 @@ import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.support.Acknowledgment
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.util.MultiValueMap
 import org.springframework.util.StreamUtils
@@ -42,7 +43,6 @@ class ApiGateway (
     @PostMapping("/gateway/**")
     fun postGateway(httpServletRequest: HttpServletRequest) {
         if(httpServletRequest !is ContentCachingRequestWrapper) {
-            log.info { "Request Servlet이 감싸져 있지 않습니다." }
             return
         }
         if(httpServletRequest.method != "POST") {
@@ -103,11 +103,12 @@ class ApiGateway (
         containerFactory = "throttlingResponseListenerContainer",
         groupId = "throttling.response.group"
     )
-    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, ThrottlingRequest>) {
+    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, ThrottlingRequest>, ack: Acknowledgment) {
         val requests = record.value()
 
         if(requests.requested > 150L) {
             log.info { "일시적으로 사용량이 너무 많습니다. 다시 시도해주세요." }
+            ack.acknowledge()
             return
         } else {
             log.info { "API 호출 횟수 : ${requests.requested}" }
@@ -121,6 +122,8 @@ class ApiGateway (
                 val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
                 log.info { "결과 = $result" }
             }
+
+            ack.acknowledge()
         }
     }
 

@@ -22,6 +22,7 @@ import org.springframework.data.mongodb.core.query.update
 import org.springframework.data.mongodb.core.updateFirst
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.support.Acknowledgment
 import org.springframework.stereotype.Service
 import java.time.Instant
 import java.time.ZoneId
@@ -40,8 +41,8 @@ class AccountService(
         concurrency = "3",
         containerFactory = "accountResponseListenerContainer",
         groupId = "ACCOUNT_RESPONSE"
-        )
-    fun processAccountRequestResponse(record: ConsumerRecord<String, AccountVoMessage>) {
+    )
+    fun processAccountRequestResponse(record: ConsumerRecord<String, AccountVoMessage>, ack: Acknowledgment) {
         val response = record.value()
         log.info { "$response 에 대한 스트림 처리가 완료되었습니다." }
 
@@ -52,6 +53,7 @@ class AccountService(
 
         if(redisBalance != dbBalance + response.balance) {
             log.info { "${response.accountNumber}의 잔고가 다릅니다. Redis = $redisBalance vs. DB = $dbBalance and streams = ${response.balance}" }
+            ack.acknowledge()
             return
         }
 
@@ -63,6 +65,8 @@ class AccountService(
         } else {
             log.info { " ${response.accountNumber} 계좌 업데이트가 되었습니다. " }
         }
+
+        ack.acknowledge()
     }
 
     @ExperimentalCoroutinesApi
@@ -79,14 +83,10 @@ class AccountService(
                 Accounts::class.java
             ) ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
             log.info { "First Deposit! = $account" }
-            withContext(Dispatchers.IO) {
-                redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
-            }
+            redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
         }
 
-        withContext(Dispatchers.IO) {
-            redisService.incrBalance(depositRequest.accountNumber, depositRequest.amount)
-        }
+        redisService.incrBalance(depositRequest.accountNumber, depositRequest.amount)
 
         val accountRequestMessage = buildAccountRequestMessage(
             accountNumber = depositRequest.accountNumber,
@@ -99,11 +99,8 @@ class AccountService(
         }
     }
 
-    @ExperimentalCoroutinesApi
-    suspend fun withdraw(withdrawRequest: WithdrawRequest): WithdrawResponse = coroutineScope {
-        val balance = withContext(Dispatchers.IO) {
-            redisService.getBalance(withdrawRequest.accountNumber)
-        }
+    fun withdraw(withdrawRequest: WithdrawRequest): WithdrawResponse {
+        val balance = redisService.getBalance(withdrawRequest.accountNumber)
 
         if(balance == -1L) {
             val account = accountMongoTemplate.findOne(
@@ -113,14 +110,10 @@ class AccountService(
 
             log.info { "First Withdraw! = $account" }
 
-            withContext(Dispatchers.IO) {
-                redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
-            }
+            redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
         }
 
-        withContext(Dispatchers.IO) {
-            redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
-        }
+        redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
 
         val accountRequestMessage = buildAccountRequestMessage(
             accountNumber = withdrawRequest.accountNumber,
@@ -133,7 +126,7 @@ class AccountService(
                 accountRequestMessage)
         }
 
-        WithdrawResponse.of(
+        return WithdrawResponse.of(
             isValid = true,
             isCompleted = true,
             balance = balance - withdrawRequest.amount,

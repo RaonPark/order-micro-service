@@ -21,6 +21,8 @@ import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.retrytopic.DltStrategy
 import org.springframework.kafka.retrytopic.TopicSuffixingStrategy
 import org.springframework.kafka.support.Acknowledgment
+import org.springframework.messaging.handler.annotation.SendTo
+import org.springframework.messaging.simp.SimpMessagingTemplate
 import org.springframework.retry.annotation.Backoff
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
@@ -35,6 +37,7 @@ class PaymentService(
     private val paymentOutboxRepository: PaymentOutboxRepository,
     private val redisService: RedisService,
     private val paymentStatusTemplate: KafkaTemplate<String, PaymentStatusMessage>,
+    private val simpMessagingTemplate: SimpMessagingTemplate
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -46,20 +49,16 @@ class PaymentService(
         val createPayment = Payments.of(null, paymentId, paymentType, payment.cardNumber, payment.cardCvc, payment.amount, processStage = ProcessStage.BEFORE_PROCESS)
         val aggId = redisService.getAggregatorId()
 
-        val savedPayment = CompletableFuture.supplyAsync {
-            val savedPayment = paymentRepository.save(createPayment)
-            redisService.savePayment(aggId.toString(), PaymentVo.document2Pojo(savedPayment))
+        val savedPayment = paymentRepository.save(createPayment)
 
-            savedPayment
-        }.thenApply {
-            val processStage = ProcessStage.BEFORE_PROCESS
-            val outbox = PaymentOutbox.of(id = null, aggId = aggId.toString(),
-                processStage = processStage, paymentId = paymentId)
+        redisService.savePayment(aggId.toString(), PaymentVo.document2Pojo(savedPayment))
 
-            paymentOutboxRepository.save(outbox)
+        val processStage = ProcessStage.BEFORE_PROCESS
 
-            it
-        }.join()
+        val outbox = PaymentOutbox.of(id = null, aggId = aggId.toString(),
+            processStage = processStage, paymentId = paymentId)
+
+        paymentOutboxRepository.save(outbox)
 
         return SavePayResponse(
             amount = savedPayment.amount,
@@ -108,7 +107,7 @@ class PaymentService(
             //  TODO: payment 알고리즘 추가 필요!
             // TODO: return 값은 여러 가지를 포함하겠지만 타임스탬프는 항상 포함!
             val payResponse = restClient.post()
-                .uri("http://localhost:8080/withdraw")
+                .uri("http://localhost:8080/service/withdraw")
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(
                     WithdrawRequest(
@@ -136,7 +135,9 @@ class PaymentService(
         outbox.processStage = com.avro.support.ProcessStage.PROCESSED
 
         val paymentStatus = buildPaymentStatus(payment.paymentId, processedTime)
-        paymentStatusTemplate.send(KafkaTopicNames.PAYMENT_STATUS, payment.paymentId, paymentStatus)
+        paymentStatusTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.PAYMENT_STATUS, payment.paymentId, paymentStatus)
+        }
 
         ack.acknowledge()
     }
@@ -149,6 +150,7 @@ class PaymentService(
             .build()
     }
 
+
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_STATUS],
         groupId = "PAYMENT_STATUS",
         concurrency = "3",
@@ -158,5 +160,7 @@ class PaymentService(
         val paymentStatus = record.value()
 
         log.info { "${paymentStatus.paymentId}에 대한 결제가 완료되었습니다." }
+
+        simpMessagingTemplate.convertAndSend("/topic/paymentState", "{status: true}")
     }
 }

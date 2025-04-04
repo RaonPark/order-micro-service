@@ -57,10 +57,6 @@ class KafkaAccountRequestStreamsConfig {
             StreamsConfig.producerPrefix(ProducerConfig.LINGER_MS_CONFIG) to "20",
             StreamsConfig.producerPrefix(ProducerConfig.BATCH_SIZE_CONFIG) to 32 * 1024,
             StreamsConfig.producerPrefix(ProducerConfig.COMPRESSION_TYPE_CONFIG) to "snappy",
-            StreamsConfig.producerPrefix(ProducerConfig.TRANSACTIONAL_ID_CONFIG) to "ACCOUNT_RESPONSE_TX",
-            StreamsConfig.producerPrefix(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG) to true,
-            StreamsConfig.producerPrefix(ProducerConfig.RETRIES_CONFIG) to "5",
-            StreamsConfig.consumerPrefix(ConsumerConfig.ISOLATION_LEVEL_CONFIG) to "read_committed",
             AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
         )
 
@@ -79,14 +75,14 @@ class KafkaAccountRequestStreamsConfig {
         stream.groupBy({ _, accountRequestMessage ->
             accountRequestMessage.accountNumber
         }, Grouped.with(Serdes.String(), accountRequestMessageAvroSerde))
-            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(3L)).advanceBy(Duration.ofSeconds(3L)))
+            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(1L)).advanceBy(Duration.ofSeconds(1L)))
             .aggregate(
                 { 0L },
                 {
                     _, message, balance ->
                     when(message.requestType) {
-                        AccountRequestType.DEPOSIT -> message.amount
-                        AccountRequestType.WITHDRAW -> -message.amount
+                        AccountRequestType.DEPOSIT -> balance + message.amount
+                        AccountRequestType.WITHDRAW -> -(balance + message.amount)
                         else -> balance
                     }
                 },
@@ -113,7 +109,8 @@ class KafkaAccountRequestStreamsConfig {
             KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
             ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
             ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to "true",
-            ProducerConfig.TRANSACTIONAL_ID_CONFIG to "account.request.tx"
+            ProducerConfig.TRANSACTIONAL_ID_CONFIG to "account.request.tx",
+            ProducerConfig.TRANSACTION_TIMEOUT_CONFIG to "5000",
         )
 
         val producerFactory = DefaultKafkaProducerFactory<String, AccountRequestMessage>(config)
