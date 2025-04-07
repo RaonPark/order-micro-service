@@ -11,14 +11,20 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
 import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.kafka.core.NoProducerAvailableException
+import org.springframework.kafka.support.Acknowledgment
+import org.springframework.kafka.support.SendResult
+import org.springframework.retry.support.RetryTemplate
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.util.MultiValueMap
 import org.springframework.util.StreamUtils
+import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
@@ -26,13 +32,15 @@ import org.springframework.web.client.RestClient
 import org.springframework.web.client.body
 import org.springframework.web.util.ContentCachingRequestWrapper
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CompletableFuture
 import java.util.function.Consumer
 
 @RestController
 class ApiGateway (
     private val redisService: RedisService,
     private val objectMapper: ObjectMapper,
-    private val throttlingRequestTemplate: KafkaTemplate<String, ThrottlingRequest>
+    private val throttlingRequestTemplate: KafkaTemplate<String, ThrottlingRequest>,
+    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate
 ) {
     companion object {
         val restClient = RestClient.create("http://localhost:8080")
@@ -42,7 +50,6 @@ class ApiGateway (
     @PostMapping("/gateway/**")
     fun postGateway(httpServletRequest: HttpServletRequest) {
         if(httpServletRequest !is ContentCachingRequestWrapper) {
-            log.info { "Request Servlet이 감싸져 있지 않습니다." }
             return
         }
         if(httpServletRequest.method != "POST") {
@@ -67,8 +74,33 @@ class ApiGateway (
             .setTimestamp(System.currentTimeMillis())
             .build()
 
-        throttlingRequestTemplate.executeInTransaction {
-            it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
+        noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, ThrottlingRequest>>, NoProducerAvailableException> {
+            throttlingRequestTemplate.executeInTransaction {
+                it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
+            }
+        }
+    }
+
+    @GetMapping("/gateway/**")
+    fun getGateway(httpServletRequest: HttpServletRequest) {
+        val requestUri = httpServletRequest.requestURI.replace("/gateway", "")
+
+        val header = getHeaders(httpServletRequest)
+        log.info { header }
+
+        val request = ThrottlingRequest.newBuilder()
+            .setRequestMethod(httpServletRequest.method)
+            .setApiName(requestUri)
+            .setHeader(header)
+            .setBody("")
+            .setRequested(1L)
+            .setTimestamp(System.currentTimeMillis())
+            .build()
+
+        noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, ThrottlingRequest>>, NoProducerAvailableException> {
+            throttlingRequestTemplate.executeInTransaction {
+                it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
+            }
         }
     }
 
@@ -103,24 +135,41 @@ class ApiGateway (
         containerFactory = "throttlingResponseListenerContainer",
         groupId = "throttling.response.group"
     )
-    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, ThrottlingRequest>) {
+    fun fixedWindowThrottlingProcess(record: ConsumerRecord<String, ThrottlingRequest>, ack: Acknowledgment) {
         val requests = record.value()
 
         if(requests.requested > 150L) {
             log.info { "일시적으로 사용량이 너무 많습니다. 다시 시도해주세요." }
+            ack.acknowledge()
             return
         } else {
             log.info { "API 호출 횟수 : ${requests.requested}" }
 
-            if(GatewayRouter.orderRouter(requests.apiName)) {
-                val header = map2HttpHeaderConsumer(requests.header)
-                val result = routePost<CreateOrderResponse>(requests.apiName, header, requests.body)
-                log.info { "결과 = $result" }
-            } else if(GatewayRouter.payRouter(requests.apiName)) {
-                val header = map2HttpHeaderConsumer(requests.header)
-                val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
-                log.info { "결과 = $result" }
+            when(requests.requestMethod) {
+                "POST" -> {
+                    if(GatewayRouter.orderRouter(requests.apiName)) {
+                        val header = map2HttpHeaderConsumer(requests.header)
+                        val result = routePost<CreateOrderResponse>(requests.apiName, header, requests.body)
+                        log.info { "결과 = $result" }
+                    } else if(GatewayRouter.payRouter(requests.apiName)) {
+                        val header = map2HttpHeaderConsumer(requests.header)
+                        val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
+                        log.info { "결과 = $result" }
+                    }
+                }
+                "GET" -> {
+                    val header = map2HttpHeaderConsumer(requests.header)
+
+                    restClient.get()
+                        .uri(requests.apiName)
+                        .headers(header)
+                        .retrieve()
+                }
             }
+
+
+
+            ack.acknowledge()
         }
     }
 

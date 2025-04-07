@@ -19,9 +19,8 @@ class AccountController(
     private val accountService: AccountService
 ) {
     @PostMapping("/deposit")
-    @ExperimentalCoroutinesApi
-    suspend fun deposit(@RequestBody depositRequest: DepositRequest): DepositResponse {
-        accountService.deposit(depositRequest)
+    fun deposit(@RequestBody depositRequest: DepositRequest): DepositResponse {
+        accountService.depositNew(depositRequest)
 
         return DepositResponse.of(
             depositResult = DepositResult.SUCCESS,
@@ -30,19 +29,8 @@ class AccountController(
     }
 
     @PostMapping("/withdraw")
-    @ExperimentalCoroutinesApi
-    suspend fun withdraw(@RequestBody withdrawRequest: WithdrawRequest): ResponseEntity<WithdrawResponse> {
-        val isValid = accountService.validateWithdraw(withdrawRequest)
-        if(isValid) {
-            val response = accountService.withdraw(withdrawRequest)
-            return ResponseEntity.ok(response)
-        }
-
-        return ResponseEntity.internalServerError().body(WithdrawResponse.of(
-            isValid = false,
-            isCompleted = false,
-            balance = -1L,
-            processedTime = "NO_OP"
-        ))
+    fun withdraw(@RequestBody withdrawRequest: WithdrawRequest): ResponseEntity<WithdrawResponse> {
+        val response = accountService.withdrawNew(withdrawRequest)
+        return ResponseEntity.ok(response)
     }
 }

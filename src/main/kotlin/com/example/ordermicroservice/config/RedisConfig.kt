@@ -2,11 +2,13 @@ package com.example.ordermicroservice.config
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.core.io.ClassPathResource
 import org.springframework.data.redis.cache.RedisCacheConfiguration
 import org.springframework.data.redis.cache.RedisCacheManager
 import org.springframework.data.redis.connection.RedisStandaloneConfiguration
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer
 import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer
 import org.springframework.data.redis.serializer.StringRedisSerializer
@@ -26,6 +28,16 @@ class RedisConfig {
         return RedisCacheManager.builder(redisConnectionFactory)
             .cacheDefaults(config)
             .build()
+    }
+
+    @Bean(name = ["balanceAtomicScript"])
+    fun balanceAtomicScript(): RedisScript<Long> {
+        return RedisScript.of(ClassPathResource("scripts/BalanceAtomicScript.lua"), Long::class.java)
+    }
+
+    @Bean(name = ["accountOperationCounterScript"])
+    fun accountOperationCounterScript(): RedisScript<Long> {
+        return RedisScript.of(ClassPathResource("scripts/AccountOperationCounter.lua"), Long::class.java)
     }
 
     @Bean

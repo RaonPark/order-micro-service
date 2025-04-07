@@ -15,15 +15,17 @@ data class Orders (
     val orderNumber: String,
     val orderedTime: String,
     val products: List<Products>,
+    var processed: ServiceProcessStage,
     val sellerId: String,
 ) {
     companion object {
-        fun of(id: String? = null, userId: String, orderNumber: String, orderedTime: String, products: List<Products>, sellerId: String): Orders {
-            return Orders(id, userId, orderNumber, orderedTime, products, sellerId)
+        fun of(id: String? = null, userId: String, orderNumber: String, orderedTime: String, products: List<Products>,
+               serviceProcessStage: ServiceProcessStage, sellerId: String): Orders {
+            return Orders(id, userId, orderNumber, orderedTime, products, serviceProcessStage, sellerId)
         }
 
         fun noop(): Orders {
-            return Orders(null, "noop", "", "", listOf(), "")
+            return Orders(null, "noop", "", "", listOf(), ServiceProcessStage.EXCEPTION, "")
         }
     }
 }

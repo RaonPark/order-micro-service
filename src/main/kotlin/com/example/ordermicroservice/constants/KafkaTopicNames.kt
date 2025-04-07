@@ -10,4 +10,6 @@ object KafkaTopicNames {
     const val ACCOUNT_REQUEST_RESPONSE = "account-request-response.topic"
     const val THROTTLING_REQUEST = "throttling.request.topic"
     const val THROTTLING_RESPONSE = "throttling.response.topic"
+    const val ORDER_COMPENSATION = "order.compensation.topic"
+    const val SHIPPING_COMPENSATION = "shipping.compensation.topic"
 }

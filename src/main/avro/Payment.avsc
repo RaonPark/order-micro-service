@@ -1,0 +1,23 @@
+{
+  "name": "PaymentMessage",
+  "namespace": "com.avro.payment",
+  "type": "record",
+  "fields": [
+    {
+      "name": "cardNumber",
+      "type": "string"
+    },
+    {
+      "name": "cardCvc",
+      "type": "string"
+    },
+    {
+      "name": "amount",
+      "type": "long"
+    },
+    {
+      "name": "processStage",
+      "type": "com.avro.support.ProcessStage"
+    }
+  ]
+}

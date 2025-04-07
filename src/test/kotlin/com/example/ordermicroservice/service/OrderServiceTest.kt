@@ -125,7 +125,7 @@ class OrderServiceTest: BehaviorSpec({
             orderedTime = "123"
         )
 
-        every { orderService.createOrder(order) } answers { CreateOrderResponse(
+        every { orderService.createOrder(order,) } answers { CreateOrderResponse(
             orderNumber = "123",
             address = "123",
             amount = 12341231,
@@ -136,7 +136,7 @@ class OrderServiceTest: BehaviorSpec({
         ) }
 
         When("주문이 들어간다.") {
-            val receipt = orderService.createOrder(order)
+            val receipt = orderService.createOrder(order,)
 
             then("주문서 정보를 확인한다.") {
                 receipt.username shouldBe username

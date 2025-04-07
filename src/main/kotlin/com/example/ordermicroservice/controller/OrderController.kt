@@ -7,7 +7,6 @@ import com.example.ordermicroservice.support.ServiceController
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
-import org.springframework.web.bind.annotation.RestController
 import java.util.concurrent.CompletableFuture
 
 @ServiceController
@@ -17,7 +16,7 @@ class OrderController(
     @PostMapping("/createOrder")
     fun createOrder(@RequestBody orderRequest: CreateOrderRequest): ResponseEntity<CreateOrderResponse> {
         val orderFuture = CompletableFuture.supplyAsync {
-            orderService.createOrder(orderRequest)
+            orderService.createOrder(orderRequest,)
         }
 
         val orderResponse = orderFuture.join()

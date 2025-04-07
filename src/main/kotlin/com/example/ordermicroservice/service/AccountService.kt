@@ -1,159 +1,73 @@
 package com.example.ordermicroservice.service
 
-import com.avro.account.AccountRequestMessage
-import com.avro.account.AccountRequestType
-import com.avro.account.AccountVoMessage
-import com.example.ordermicroservice.constants.KafkaTopicNames
-import com.example.ordermicroservice.document.Accounts
 import com.example.ordermicroservice.dto.DepositRequest
-import com.example.ordermicroservice.dto.DepositResponse
 import com.example.ordermicroservice.dto.WithdrawRequest
 import com.example.ordermicroservice.dto.WithdrawResponse
+import com.example.ordermicroservice.repository.mysql.AccountRepository
 import com.example.ordermicroservice.support.DateTimeSupport
-import com.mongodb.client.result.UpdateResult
 import io.github.oshai.kotlinlogging.KotlinLogging
-import kotlinx.coroutines.*
-import org.apache.kafka.clients.consumer.ConsumerRecord
-import org.springframework.data.mongodb.core.MongoTemplate
-import org.springframework.data.mongodb.core.query.Criteria
-import org.springframework.data.mongodb.core.query.Query
-import org.springframework.data.mongodb.core.query.Update
-import org.springframework.data.mongodb.core.query.update
-import org.springframework.data.mongodb.core.updateFirst
-import org.springframework.kafka.annotation.KafkaListener
-import org.springframework.kafka.core.KafkaTemplate
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
-import java.time.Instant
-import java.time.ZoneId
+import org.springframework.transaction.annotation.Transactional
 
 @Service
 class AccountService(
-    private val accountMongoTemplate: MongoTemplate,
-    private val accountRequestTemplate: KafkaTemplate<String, AccountRequestMessage>,
+    @Qualifier("JpaAccountRepository") private val accountRepository: AccountRepository,
     private val redisService: RedisService
 ) {
     companion object {
         val log = KotlinLogging.logger { }
     }
 
-    @KafkaListener(topics = [KafkaTopicNames.ACCOUNT_REQUEST_RESPONSE],
-        concurrency = "3",
-        containerFactory = "accountResponseListenerContainer",
-        groupId = "ACCOUNT_RESPONSE"
-        )
-    fun processAccountRequestResponse(record: ConsumerRecord<String, AccountVoMessage>) {
-        val response = record.value()
-        log.info { "$response 에 대한 스트림 처리가 완료되었습니다." }
+    @Transactional
+    fun depositNew(depositRequest: DepositRequest) {
+        val account = accountRepository.findWithPessimisticLockByAccountNumber(depositRequest.accountNumber)
+            ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
 
-        val redisBalance = redisService.getBalance(response.accountNumber)
-        val findQuery = Query(Criteria.where("accountNumber").`is`(response.accountNumber))
-        val dbBalance = accountMongoTemplate.findOne(findQuery, Accounts::class.java)?.balance
-            ?: throw RuntimeException("${response.accountNumber}에 해당하는 계좌가 없습니다!")
+        account.balance += depositRequest.amount
 
-        if(redisBalance != dbBalance + response.balance) {
-            log.info { "${response.accountNumber}의 잔고가 다릅니다. Redis = $redisBalance vs. DB = $dbBalance and streams = ${response.balance}" }
-            return
-        }
+        redisService.saveBalance(depositRequest.accountNumber, account.balance)
 
-        val updateQuery = Update.update("balance", redisBalance)
-        val updateResult = accountMongoTemplate.updateFirst(findQuery, updateQuery, Accounts::class.java)
+        log.info { "최종 계좌 ${depositRequest.accountNumber}의 잔금 = ${account.balance}" }
 
-        if(updateResult.matchedCount != 1L && updateResult.modifiedCount != 1L) {
-            log.info { "${response.accountNumber} 계좌 업데이트에 실패했습니다." }
-        } else {
-            log.info { " ${response.accountNumber} 계좌 업데이트가 되었습니다. " }
-        }
+        log.info { "계좌 ${depositRequest.accountNumber}에 대한 입금이 완료되었습니다. 계좌 잔고 = ${account.balance}" }
     }
 
-    @ExperimentalCoroutinesApi
-    suspend fun deposit(depositRequest: DepositRequest) = coroutineScope {
-        val balance = withContext(Dispatchers.IO) {
-            redisService.getBalance(depositRequest.accountNumber)
-        }
+    @Transactional
+    fun withdrawNew(withdrawRequest: WithdrawRequest): WithdrawResponse {
+        val account = accountRepository.findWithPessimisticLockByAccountNumber(withdrawRequest.accountNumber)
+            ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
 
-        log.info { "deposit : $balance" }
+        account.balance -= withdrawRequest.amount
 
-        if(balance == -1L) {
-            val account = accountMongoTemplate.findOne(
-                Query(Criteria.where("accountNumber").`is`(depositRequest.accountNumber)),
-                Accounts::class.java
-            ) ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
-            log.info { "First Deposit! = $account" }
-            withContext(Dispatchers.IO) {
-                redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
-            }
-        }
+        redisService.saveBalance(withdrawRequest.accountNumber, account.balance)
 
-        withContext(Dispatchers.IO) {
-            redisService.incrBalance(depositRequest.accountNumber, depositRequest.amount)
-        }
+        log.info { "최종 계좌 ${withdrawRequest.accountNumber}의 잔금 = ${account.balance}" }
 
-        val accountRequestMessage = buildAccountRequestMessage(
-            accountNumber = depositRequest.accountNumber,
-            amount = depositRequest.amount,
-            type = AccountRequestType.DEPOSIT
-        )
+        log.info { "계좌 ${withdrawRequest.accountNumber}에 대한 출금이 완료되었습니다." }
 
-        accountRequestTemplate.executeInTransaction {
-            it.send(KafkaTopicNames.ACCOUNT_REQUEST, depositRequest.accountNumber, accountRequestMessage)
-        }
-    }
-
-    @ExperimentalCoroutinesApi
-    suspend fun withdraw(withdrawRequest: WithdrawRequest): WithdrawResponse = coroutineScope {
-        val balance = withContext(Dispatchers.IO) {
-            redisService.getBalance(withdrawRequest.accountNumber)
-        }
-
-        if(balance == -1L) {
-            val account = accountMongoTemplate.findOne(
-                Query(Criteria.where("accountNumber").`is`(withdrawRequest.accountNumber)),
-                Accounts::class.java
-            ) ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
-
-            log.info { "First Withdraw! = $account" }
-
-            withContext(Dispatchers.IO) {
-                redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
-            }
-        }
-
-        withContext(Dispatchers.IO) {
-            redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
-        }
-
-        val accountRequestMessage = buildAccountRequestMessage(
-            accountNumber = withdrawRequest.accountNumber,
-            amount = withdrawRequest.amount,
-            type = AccountRequestType.WITHDRAW
-        )
-
-        accountRequestTemplate.executeInTransaction {
-            it.send(KafkaTopicNames.ACCOUNT_REQUEST, withdrawRequest.accountNumber,
-                accountRequestMessage)
-        }
-
-        WithdrawResponse.of(
+        return WithdrawResponse.of(
             isValid = true,
             isCompleted = true,
-            balance = balance - withdrawRequest.amount,
+            balance = account.balance,
             processedTime = DateTimeSupport.getNowTimeWithKoreaZoneAndFormatter()
         )
     }
 
-    fun validateWithdraw(withdrawRequest: WithdrawRequest): Boolean {
-        val findQuery = Query(Criteria.where("accountNumber").`is`(withdrawRequest.accountNumber))
-        val account = accountMongoTemplate.findOne(findQuery, Accounts::class.java)
-            ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 없습니다.")
-
-        return account.balance >= withdrawRequest.amount
+    fun inquiry(accountNumber: String): Long {
+        return loadBalanceCacheIfMiss(accountNumber)
     }
 
-    private fun buildAccountRequestMessage(accountNumber: String, amount: Long, type: AccountRequestType): AccountRequestMessage {
-        return AccountRequestMessage.newBuilder()
-            .setAccountNumber(accountNumber)
-            .setAmount(amount)
-            .setRequestType(type)
-            .build()
+    private fun loadBalanceCacheIfMiss(accountNumber: String): Long {
+        val balance = redisService.getBalance(accountNumber)
+
+        if(balance == -1L) {
+            val account = accountRepository.findByAccountNumber(accountNumber)
+                ?: throw RuntimeException("${accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
+
+            redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
+        }
+
+        return balance
     }
 }

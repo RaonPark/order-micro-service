@@ -1,13 +1,12 @@
 package com.example.ordermicroservice.service
 
 import com.avro.account.AccountRequestMessage
-import com.example.ordermicroservice.document.Accounts
+import com.example.ordermicroservice.entity.Accounts
 import com.example.ordermicroservice.dto.DepositRequest
 import com.example.ordermicroservice.repository.mongo.AccountRepository
 import com.mongodb.client.result.UpdateResult
 import io.kotest.core.spec.style.BehaviorSpec
 import io.kotest.extensions.spring.SpringExtension
-import io.kotest.matchers.shouldBe
 import io.mockk.every
 import io.mockk.mockk
 import org.springframework.data.mongodb.core.MongoTemplate

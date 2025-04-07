@@ -36,7 +36,7 @@ class PaymentOutboxService(
         }
     }
 
-    @Scheduled(fixedRate = 5000L)
+    @Scheduled(fixedRate = 3000L)
     fun processPayment() {
         val outboxes = pollingOutbox()
 

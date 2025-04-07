@@ -8,6 +8,7 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.kafka.core.DefaultKafkaProducerFactory
+import org.springframework.kafka.core.DefaultTransactionIdSuffixStrategy
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.core.ProducerFactory
 
@@ -25,8 +26,13 @@ class KafkaPaymentStatusProducerConfig {
         config[ProducerConfig.BATCH_SIZE_CONFIG] = 32 * 1024
         config[ProducerConfig.COMPRESSION_TYPE_CONFIG] = "snappy"
         config[ProducerConfig.LINGER_MS_CONFIG] = 20
+        config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
+        config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "Payment.Status.tx"
+        config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
 
-        return DefaultKafkaProducerFactory(config)
+        val producerFactory = DefaultKafkaProducerFactory<String, PaymentStatusMessage>(config)
+        producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))
+        return producerFactory
     }
 
     @Bean

@@ -3,6 +3,7 @@ import org.jetbrains.kotlin.gradle.targets.js.npm.importedPackageDir
 plugins {
     kotlin("jvm") version "1.9.25"
     kotlin("plugin.spring") version "1.9.25"
+    kotlin("plugin.jpa") version "1.9.25"
     id("org.springframework.boot") version "3.4.3"
     id("io.spring.dependency-management") version "1.1.7"
     id("com.github.davidmc24.gradle.plugin.avro") version "1.9.1"
@@ -36,10 +37,14 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.springframework.boot:spring-boot-starter-websocket")
+    implementation("org.springframework:spring-aspects")
+    implementation("org.springframework.retry:spring-retry")
     implementation("org.apache.kafka:kafka-streams")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
     implementation("org.springframework.kafka:spring-kafka")
     implementation("org.projectlombok:lombok")
+    implementation("org.springframework.boot:spring-boot-starter-jdbc")
+    implementation("org.springframework.boot:spring-boot-starter-data-jpa")
 
     implementation("org.apache.avro:avro:1.12.0")
     implementation("io.confluent:kafka-streams-avro-serde:7.9.0")
