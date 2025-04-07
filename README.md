@@ -17,6 +17,9 @@
 따라서 이런 동기적인 문제를 Transactional Outbox Pattern을 사용하여 해결합니다.
 단순하게 Transactional Outbot Pattern만 구현하는 것이 아니라 구현을 하면서 마주친 문제점들과 생각들을 하나씩 정리했습니다.
 
+전체적인 개발 절차 및 회고는 제 블로그에서 Kafka Section에서 확인하실 수 있습니다!
+- https://blog.naver.com/sumin9278
+
 ## Transactional Outbox Pattern
 기존의 2PC는 2 Phase인 prepare, commit phase에서 DB Lock을 사용하기 때문에 한번에 많은 요청이 몰리더라도 순차처리 때문에 오래 걸린다는 문제점이 있습니다.
 2PC를 위한 코디네이터를 구현해야하며, 이종의 DB에 대해 특히 구현하기 어렵습니다.
@@ -32,6 +35,8 @@ ref: https://microservices.io/patterns/data/transactional-outbox.html
 ## Choreography with Event Chaining
 저의 구현 방식은 MSA는 아니지만 기본적으로 MSA의 saga 패턴 중 Choreography 방식을 따랐습니다.
 주문-결제-배송의 문제를 이벤트 전파 방식으로 구현했으며, 배송, 결제 실패 시에 나머지 단계도 실패할 수 있도록 보상 이벤트(Compensation Event)를 구현했습니다.
+
+- https://blog.naver.com/sumin9278/223825363210
 
 ## 입금/출금/조회의 동시성 문제를 어떻게 해결할까? How to deal with Concurrency Problems in account operations(deposit/withdraw/inquiry)
 입금/출금/조회의 동시성 문제는 매우 중요한 문제입니다. 조회를 할 때, 입금/출금이 처리가 안된 상태로 처리되면 사용자가 불편함을 느낄 것이고,
