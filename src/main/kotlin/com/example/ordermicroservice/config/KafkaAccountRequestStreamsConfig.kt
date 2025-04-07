@@ -75,7 +75,7 @@ class KafkaAccountRequestStreamsConfig {
         stream.groupBy({ _, accountRequestMessage ->
             accountRequestMessage.accountNumber
         }, Grouped.with(Serdes.String(), accountRequestMessageAvroSerde))
-            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(1L)).advanceBy(Duration.ofSeconds(1L)))
+            .windowedBy(TimeWindows.ofSizeWithNoGrace(Duration.ofSeconds(3L)).advanceBy(Duration.ofSeconds(3L)))
             .aggregate(
                 { 0L },
                 {

@@ -119,6 +119,17 @@ services:
     networks:
       - orderservice
 
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: 1234
+      MYSQL_DATABASE: orderMicroService
+    networks:
+      - orderservice
+
   backend:
     image: amazoncorretto:17
     container_name: backend
@@ -135,6 +146,7 @@ services:
       - kafka3
       - mongodb
       - kafka-ui
+      - mysql
     networks:
       - orderservice
 

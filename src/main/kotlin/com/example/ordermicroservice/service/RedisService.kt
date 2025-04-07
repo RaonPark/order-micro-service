@@ -6,6 +6,7 @@ import com.example.ordermicroservice.vo.UserVo
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.time.Duration
@@ -14,7 +15,8 @@ import java.time.Duration
 class RedisService(
     private val redisTemplate: RedisTemplate<String, Any>,
     private val numericRedisTemplate: RedisTemplate<String, Long>,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val balanceAtomicScript: RedisScript<Long>
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -44,8 +46,12 @@ class RedisService(
         numericRedisTemplate.opsForValue().set(accountNumber, balance)
     }
 
-    fun incrBalance(accountNumber: String, amount: Long) {
-        numericRedisTemplate.opsForValue().increment(accountNumber, amount)
+    fun incrBalance(accountNumber: String, amount: Long): Long {
+        return numericRedisTemplate.execute(
+            balanceAtomicScript,
+            listOf(accountNumber),
+            amount
+        )
     }
 
     fun getBalance(accountNumber: String): Long {

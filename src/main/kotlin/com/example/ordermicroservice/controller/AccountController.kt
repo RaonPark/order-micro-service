@@ -32,17 +32,7 @@ class AccountController(
     @PostMapping("/withdraw")
     @ExperimentalCoroutinesApi
     suspend fun withdraw(@RequestBody withdrawRequest: WithdrawRequest): ResponseEntity<WithdrawResponse> {
-        val isValid = accountService.validateWithdraw(withdrawRequest)
-        if(isValid) {
-            val response = accountService.withdraw(withdrawRequest)
-            return ResponseEntity.ok(response)
-        }
-
-        return ResponseEntity.internalServerError().body(WithdrawResponse.of(
-            isValid = false,
-            isCompleted = false,
-            balance = -1L,
-            processedTime = "NO_OP"
-        ))
+        val response = accountService.withdrawNew(withdrawRequest)
+        return ResponseEntity.ok(response)
     }
 }

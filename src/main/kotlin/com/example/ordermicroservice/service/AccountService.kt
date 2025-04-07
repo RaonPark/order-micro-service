@@ -6,26 +6,25 @@ import com.avro.account.AccountVoMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.Accounts
 import com.example.ordermicroservice.dto.DepositRequest
-import com.example.ordermicroservice.dto.DepositResponse
 import com.example.ordermicroservice.dto.WithdrawRequest
 import com.example.ordermicroservice.dto.WithdrawResponse
 import com.example.ordermicroservice.support.DateTimeSupport
-import com.mongodb.client.result.UpdateResult
+import com.example.ordermicroservice.vo.AccountRequestChannelMessage
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.core.query.Update
-import org.springframework.data.mongodb.core.query.update
-import org.springframework.data.mongodb.core.updateFirst
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.Acknowledgment
 import org.springframework.stereotype.Service
-import java.time.Instant
-import java.time.ZoneId
+import java.util.concurrent.BlockingQueue
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.LinkedBlockingQueue
 
 @Service
 class AccountService(
@@ -35,6 +34,7 @@ class AccountService(
 ) {
     companion object {
         val log = KotlinLogging.logger { }
+        val accountRequestChannel = ConcurrentHashMap<String, BlockingQueue<AccountRequestChannelMessage>>()
     }
 
     @KafkaListener(topics = [KafkaTopicNames.ACCOUNT_REQUEST_RESPONSE],
@@ -99,7 +99,39 @@ class AccountService(
         }
     }
 
-    fun withdraw(withdrawRequest: WithdrawRequest): WithdrawResponse {
+    suspend fun depositNew(depositRequest: DepositRequest) {
+        val balance = redisService.getBalance(depositRequest.accountNumber)
+
+        log.info { "deposit : $balance" }
+
+        if(balance == -1L) {
+            val dbBalance = selectDBBalance(depositRequest.accountNumber)
+                ?: throw RuntimeException("${depositRequest.accountNumber}에 해당하는 계좌가 존재하지 않습니다.")
+            redisService.saveBalance(accountNumber = depositRequest.accountNumber, balance = dbBalance)
+        }
+
+        val cacheBalance = redisService.incrBalance(depositRequest.accountNumber, depositRequest.amount)
+
+        if(!accountRequestChannel.containsKey(depositRequest.accountNumber)) {
+            accountRequestChannel[depositRequest.accountNumber] = LinkedBlockingQueue()
+        }
+
+        accountRequestChannel[depositRequest.accountNumber]?.add(
+            AccountRequestChannelMessage(
+                amount = depositRequest.amount,
+                accountNumber = depositRequest.accountNumber,
+                requestType = "DEPOSIT",
+                cacheBalance = cacheBalance
+            )
+        )
+
+        val finalBalance = processAccountOperations(depositRequest.accountNumber)
+
+        log.info { "계좌 ${depositRequest.accountNumber}에 대한 입금이 완료되었습니다. 계좌 잔고 = $finalBalance" }
+    }
+
+
+    fun withdrawNew(withdrawRequest: WithdrawRequest): WithdrawResponse {
         val balance = redisService.getBalance(withdrawRequest.accountNumber)
 
         if(balance == -1L) {
@@ -113,18 +145,26 @@ class AccountService(
             redisService.saveBalance(accountNumber = account.accountNumber, balance = account.balance)
         }
 
-        redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
+        val afterBalance = redisService.incrBalance(withdrawRequest.accountNumber, -withdrawRequest.amount)
 
-        val accountRequestMessage = buildAccountRequestMessage(
-            accountNumber = withdrawRequest.accountNumber,
-            amount = withdrawRequest.amount,
-            type = AccountRequestType.WITHDRAW
+        if(!accountRequestChannel.containsKey(withdrawRequest.accountNumber)) {
+            accountRequestChannel[withdrawRequest.accountNumber] = LinkedBlockingQueue()
+        }
+
+        accountRequestChannel[withdrawRequest.accountNumber]?.add(
+            AccountRequestChannelMessage(
+                amount = withdrawRequest.amount,
+                accountNumber = withdrawRequest.accountNumber,
+                cacheBalance = afterBalance,
+                requestType = "WITHDRAW"
+            )
         )
 
-        accountRequestTemplate.executeInTransaction {
-            it.send(KafkaTopicNames.ACCOUNT_REQUEST, withdrawRequest.accountNumber,
-                accountRequestMessage)
-        }
+        val finalBalance = processAccountOperations(accountNumber = withdrawRequest.accountNumber)
+
+        log.info { "최종 계좌 ${withdrawRequest.accountNumber}의 잔금 = $finalBalance" }
+
+        log.info { "계좌 ${withdrawRequest.accountNumber}에 대한 출금이 완료되었습니다." }
 
         return WithdrawResponse.of(
             isValid = true,
@@ -134,12 +174,79 @@ class AccountService(
         )
     }
 
-    fun validateWithdraw(withdrawRequest: WithdrawRequest): Boolean {
-        val findQuery = Query(Criteria.where("accountNumber").`is`(withdrawRequest.accountNumber))
-        val account = accountMongoTemplate.findOne(findQuery, Accounts::class.java)
-            ?: throw RuntimeException("${withdrawRequest.accountNumber}에 해당하는 계좌가 없습니다.")
+    fun inquiry(accountNumber: String): Long {
+        val cacheBalance = redisService.getBalance(accountNumber)
 
-        return account.balance >= withdrawRequest.amount
+        if(!accountRequestChannel.containsKey(accountNumber)) {
+            accountRequestChannel[accountNumber] = LinkedBlockingQueue()
+        }
+
+        accountRequestChannel[accountNumber]?.add(AccountRequestChannelMessage(
+            amount = 0L,
+            accountNumber = accountNumber,
+            cacheBalance = cacheBalance,
+            requestType = "INQUIRY"
+        ))
+
+        return processAccountOperations(accountNumber)
+    }
+
+    private fun processAccountOperations(accountNumber: String): Long {
+        val requestQueue = accountRequestChannel[accountNumber]!!
+
+        val requestMessage = requestQueue.poll()
+        when (requestMessage.requestType) {
+            "WITHDRAW" -> {
+                val dbBalance = selectDBBalance(accountNumber)
+                    ?: throw RuntimeException("${requestMessage.accountNumber}에 해당하는 계좌가 없습니다.")
+
+                if (requestMessage.cacheBalance != dbBalance - requestMessage.amount) {
+                    log.info { "cache : ${requestMessage.cacheBalance} != accountDB : $dbBalance and amount : ${-requestMessage.amount}" }
+                } else {
+                    accountMongoTemplate.updateFirst(
+                        Query(Criteria.where("accountNumber").`is`(requestMessage.accountNumber)),
+                        Update.update("balance", requestMessage.cacheBalance),
+                        Accounts::class.java
+                    )
+                }
+
+                return dbBalance - requestMessage.amount
+            }
+
+            "DEPOSIT" -> {
+                val dbBalance = selectDBBalance(accountNumber)
+                    ?: throw RuntimeException("${requestMessage.accountNumber}에 해당하는 계좌가 없습니다.")
+
+                if (requestMessage.cacheBalance != dbBalance + requestMessage.amount) {
+                    log.info { "cache : ${requestMessage.cacheBalance} != accountDB : $dbBalance and amount : ${-requestMessage.amount}" }
+                } else {
+                    accountMongoTemplate.updateFirst(
+                        Query(Criteria.where("accountNumber").`is`(requestMessage.accountNumber)),
+                        Update.update("balance", requestMessage.cacheBalance),
+                        Accounts::class.java
+                    )
+                }
+
+                return dbBalance + requestMessage.amount
+            }
+
+            "INQUIRY" -> {
+                val dbBalance = selectDBBalance(accountNumber)
+                    ?: throw RuntimeException("${requestMessage.accountNumber}에 해당하는 계좌가 없습니다.")
+
+                if (requestMessage.cacheBalance != dbBalance + requestMessage.amount) {
+                    log.info { "cache : ${requestMessage.cacheBalance} != accountDB : $dbBalance and amount : ${-requestMessage.amount}" }
+                }
+
+                return dbBalance - requestMessage.amount
+            }
+
+            else -> {
+                log.info { "잘못된 Request Type 입니다 = ${requestMessage.requestType}" }
+
+                return Long.MIN_VALUE
+            }
+        }
     }
 
     private fun buildAccountRequestMessage(accountNumber: String, amount: Long, type: AccountRequestType): AccountRequestMessage {
@@ -148,5 +255,10 @@ class AccountService(
             .setAmount(amount)
             .setRequestType(type)
             .build()
+    }
+
+    private fun selectDBBalance(accountNumber: String): Long? {
+        val findQuery = Query(Criteria.where("accountNumber").`is`(accountNumber))
+        return accountMongoTemplate.findOne(findQuery, Accounts::class.java)?.balance
     }
 }
