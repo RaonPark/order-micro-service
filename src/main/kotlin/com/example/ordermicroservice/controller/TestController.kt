@@ -11,7 +11,9 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.data.redis.core.RedisTemplate
+import org.springframework.data.redis.core.script.RedisScript
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
@@ -22,7 +24,8 @@ class TestController(
     private val orderService: OrderService,
     private val redisService: RedisService,
     private val accountService: AccountService,
-    private val numericRedisTemplate: RedisTemplate<String, Long>
+    private val numericRedisTemplate: RedisTemplate<String, Long>,
+    @Qualifier("accountOperationCounterScript") private val accountOperationCounterScript: RedisScript<Long>
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -45,18 +48,22 @@ class TestController(
 
     @GetMapping("/testAccount")
     fun testAccount() {
-        val rand = Random(2000)
-        val order = rand.nextInt()
+        val rand = Random.Default
+        val order = rand.nextInt(30) + 1
 
-        runBlocking {
-            if(order % 2 == 0) {
-                accountService.withdrawNew(WithdrawRequest(accountNumber = "123-123-123-123", amount = 10))
-            } else if(order % 3 == 0) {
-                accountService.depositNew(DepositRequest(accountNumber = "123-123-123-123", amount = 100))
-            } else {
-                accountService.inquiry("123-123-123-123")
-            }
+        if(order % 3 == 0) {
+            numericRedisTemplate.execute(accountOperationCounterScript, listOf("withdraw"))
+            accountService.withdrawNew(WithdrawRequest(accountNumber = "123-123-123-123", amount = 10))
+        } else if(order % 5 == 0) {
+            numericRedisTemplate.execute(accountOperationCounterScript, listOf("deposit"))
+            accountService.depositNew(DepositRequest(accountNumber = "123-123-123-123", amount = 10))
+        } else {
+            numericRedisTemplate.execute(accountOperationCounterScript, listOf("inquiry"))
+            accountService.inquiry("123-123-123-123")
         }
 
+        log.info { "출금 : ${numericRedisTemplate.opsForValue().get("withdraw")}번" }
+        log.info { "입금 : ${numericRedisTemplate.opsForValue().get("deposit")}번" }
+        log.info { "조회 : ${numericRedisTemplate.opsForValue().get("inquiry")}번" }
     }
 }

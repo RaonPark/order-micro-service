@@ -30,9 +30,14 @@ class RedisConfig {
             .build()
     }
 
-    @Bean
+    @Bean(name = ["balanceAtomicScript"])
     fun balanceAtomicScript(): RedisScript<Long> {
         return RedisScript.of(ClassPathResource("scripts/BalanceAtomicScript.lua"), Long::class.java)
+    }
+
+    @Bean(name = ["accountOperationCounterScript"])
+    fun accountOperationCounterScript(): RedisScript<Long> {
+        return RedisScript.of(ClassPathResource("scripts/AccountOperationCounter.lua"), Long::class.java)
     }
 
     @Bean
