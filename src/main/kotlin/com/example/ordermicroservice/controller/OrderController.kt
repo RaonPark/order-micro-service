@@ -13,14 +13,4 @@ import java.util.concurrent.CompletableFuture
 class OrderController(
     private val orderService: OrderService
 ) {
-    @PostMapping("/createOrder")
-    fun createOrder(@RequestBody orderRequest: CreateOrderRequest): ResponseEntity<CreateOrderResponse> {
-        val orderFuture = CompletableFuture.supplyAsync {
-            orderService.createOrder(orderRequest,)
-        }
-
-        val orderResponse = orderFuture.join()
-
-        return ResponseEntity.ok(orderResponse)
-    }
 }

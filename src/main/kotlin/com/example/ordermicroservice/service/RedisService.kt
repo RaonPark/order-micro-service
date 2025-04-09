@@ -60,7 +60,12 @@ class RedisService(
 
     fun savePayment(aggId: String, payment: PaymentVo) {
         val paymentString = objectMapper.writeValueAsString(payment)
-        redisTemplate.opsForHash<String, Any>().putIfAbsent("payment", aggId, paymentString)
+        redisTemplate.opsForHash<String, String>().putIfAbsent("payment", aggId, paymentString)
+    }
+
+    fun getPayment(token: String): PaymentVo {
+        val paymentString = redisTemplate.opsForHash<String, String>()["payment", token]
+        return objectMapper.readValue(paymentString, PaymentVo::class.java)
     }
 
     fun deletePayment(aggId: String): PaymentVo {

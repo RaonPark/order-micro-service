@@ -4,10 +4,15 @@ import com.avro.shipping.ShippingMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.Shipping
 import com.example.ordermicroservice.repository.mongo.ShippingRepository
+import com.example.ordermicroservice.support.RetryableTopicForShippingTopic
+import com.example.ordermicroservice.vo.Compensation
 import com.example.ordermicroservice.vo.OrderCompensation
+import com.example.ordermicroservice.vo.PaymentCompensation
+import com.example.ordermicroservice.vo.PaymentIntentTokenVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.data.mongodb.core.geo.GeoJsonPoint
+import org.springframework.kafka.annotation.DltHandler
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.Acknowledgment
@@ -17,7 +22,8 @@ import org.springframework.stereotype.Service
 class ShippingService(
     private val shippingRepository: ShippingRepository,
     private val redisService: RedisService,
-    private val orderCompensationKafkaTemplate: KafkaTemplate<String, OrderCompensation>
+    private val compensationKafkaTemplate: KafkaTemplate<String, Compensation>,
+    private val processPaymentKafkaTemplate: KafkaTemplate<String, PaymentIntentTokenVo>,
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -26,6 +32,8 @@ class ShippingService(
 
     }
 
+
+    @RetryableTopicForShippingTopic
     @KafkaListener(topics = [KafkaTopicNames.SHIPPING],
         groupId = "Shipping_Consumer",
         containerFactory = "shippingListenerContainer",
@@ -34,25 +42,37 @@ class ShippingService(
         val orderNumber = record.key()
         val shippingMessage = record.value()
 
-//        if(record.timestamp() % 2 == 0L) {
-//            orderCompensationKafkaTemplate.executeInTransaction {
-//                it.send(KafkaTopicNames.ORDER_COMPENSATION, orderNumber, OrderCompensation(
-//                    orderNumber = orderNumber, exceptionStep = "SHIPPING"
-//                ))
-//            }
-//            return
-//        }
-
         val shipping = buildShipping(orderNumber, shippingMessage)
 
         shippingRepository.save(shipping)
         log.info { "$shipping 에 대한 배송정보가 저장되었습니다." }
 
-        val timestamp = redisService.getTimestamp()
-        val ms = System.currentTimeMillis() - timestamp
-        log.info { "걸린 시간 = $ms ms" }
+        processPaymentKafkaTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.PAYMENT_REQUEST, shippingMessage.paymentIntentToken,
+                PaymentIntentTokenVo(paymentIntentToken = shippingMessage.paymentIntentToken))
+        }
 
         ack.acknowledge()
+    }
+
+    @DltHandler
+    fun shippingCompensation(shippingMessage: ShippingMessage) {
+        val compensationVo = Compensation(
+            orderNumber = shippingMessage.orderId,
+            exceptStep = "SHIPPING"
+        )
+
+        val shipping = shippingRepository.findByOrderNumber(shippingMessage.orderId)
+
+        if(shipping != null) {
+            shippingRepository.deleteById(shipping.id!!)
+        }
+
+        log.info { "${shippingMessage.orderId} 에 해당하는 배송 서비스 오류로 인한 보상 로직 처리!" }
+
+        compensationKafkaTemplate.executeInTransaction {
+            it.send(KafkaTopicNames.COMPENSATION_REQUEST, "SHIPPING", compensationVo)
+        }
     }
 
     private fun buildShipping(orderNumber: String, shippingMessage: ShippingMessage): Shipping {

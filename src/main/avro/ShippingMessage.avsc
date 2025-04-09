@@ -30,6 +30,10 @@
     {
       "name": "sellerLocationString",
       "type": "string"
+    },
+    {
+      "name": "paymentIntentToken",
+      "type": "string"
     }
   ]
 }
