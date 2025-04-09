@@ -2,6 +2,6 @@ package com.example.ordermicroservice.vo
 
 data class PaymentCompensation(
     val exceptionStep: String,
-    val paymentNumber: String
+    val orderNumber: String
 ) {
 }

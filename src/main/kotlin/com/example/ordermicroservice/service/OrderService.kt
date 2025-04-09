@@ -11,17 +11,19 @@ import com.example.ordermicroservice.dto.GetSellerResponse
 import com.example.ordermicroservice.dto.GetUserResponse
 import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
+import com.example.ordermicroservice.support.MachineIdGenerator
+import com.example.ordermicroservice.support.RetryableTopicForOrderTopic
+import com.example.ordermicroservice.support.SnowflakeIdGenerator
+import com.example.ordermicroservice.vo.CreateOrderVo
 import com.example.ordermicroservice.vo.OrderCompensation
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.MediaType
 import org.springframework.kafka.annotation.KafkaListener
-import org.springframework.kafka.annotation.RetryableTopic
 import org.springframework.kafka.core.KafkaTemplate
-import org.springframework.kafka.retrytopic.DltStrategy
-import org.springframework.kafka.retrytopic.TopicSuffixingStrategy
 import org.springframework.kafka.support.Acknowledgment
-import org.springframework.retry.annotation.Backoff
+import org.springframework.retry.support.RetryTemplate
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.body
@@ -36,45 +38,50 @@ class OrderService(
     private val orderOutboxRepository: OrderOutboxRepository,
     private val redisService: RedisService,
     private val shippingTemplate: KafkaTemplate<String, ShippingMessage>,
+    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
     }
-    fun createOrder(order: CreateOrderRequest): CreateOrderResponse {
+
+    @KafkaListener(topics = [KafkaTopicNames.ORDER_REQUEST],
+        containerFactory = "createOrderListenerContainerFactory",
+        groupId = "CREATE_ORDER",
+        concurrency = "3"
+    )
+    fun createOrder(record: ConsumerRecord<String, CreateOrderVo>, ack: Acknowledgment) {
+        val order = record.value()
+
+        log.info { "process order = $order" }
+
         val orderEntity = Orders.of(
             id = null,
             userId = order.userId,
-            orderNumber = generateOrderNumber(order.userId),
+            orderNumber = SnowflakeIdGenerator(MachineIdGenerator.machineId()).nextId().toString(),
             orderedTime = getNowTime(),
             products = order.products,
             serviceProcessStage = ServiceProcessStage.NOT_PROCESS,
-            sellerId = order.sellerId
+            sellerId = order.sellerId,
+            paymentIntentToken = order.paymentIntentToken
         )
+
         val savedOrder = orderRepository.save(orderEntity)
 
         val aggId = redisService.getAggregatorId()
+
         val processStage = ProcessStage.BEFORE_PROCESS
-        val outbox = OrderOutbox.of(id = null, aggId = aggId.toString(),
-            processStage =  processStage, orderId = savedOrder.orderNumber)
+
+        val outbox = OrderOutbox.of(
+            id = null,
+            aggId = aggId.toString(),
+            processStage = processStage,
+            orderId = savedOrder.orderNumber,
+            paymentIntentToken = savedOrder.paymentIntentToken
+        )
 
         orderOutboxRepository.save(outbox)
 
-        return CreateOrderResponse.of(
-            orderNumber = savedOrder.orderNumber,
-            products = savedOrder.products,
-            amount = calculateAmount(products = savedOrder.products),
-            orderedTime = savedOrder.orderedTime,
-            address = "",
-            sellerName = "",
-            username = ""
-        )
-    }
-
-    @OptIn(ExperimentalStdlibApi::class)
-    private fun generateOrderNumber(userId: String): String {
-        val orderedTime = Instant.now().toEpochMilli().toHexString()
-        val snowflake = UUID.randomUUID().toString().take(5)
-        return orderedTime.plus(userId).plus(snowflake)
+        ack.acknowledge()
     }
 
     private fun getNowTime(): String {
@@ -82,20 +89,7 @@ class OrderService(
         return Instant.now().atZone(ZoneId.of("Asia/Seoul")).format(formatter)
     }
 
-    private fun calculateAmount(products: List<Products>): Long =
-        products.sumOf { it.quantity * it.price }
-
-    @RetryableTopic(
-        retryTopicSuffix = "-retry",
-        dltTopicSuffix = "-dlt",
-        topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
-        concurrency = "3",
-        numPartitions = "10",
-        replicationFactor = "3",
-        dltStrategy = DltStrategy.ALWAYS_RETRY_ON_ERROR,
-        backoff = Backoff(value = 1000L, multiplier = 2.0, maxDelay = 20000L, random = true),
-        kafkaTemplate = "orderOutboxTemplate"
-    )
+    @RetryableTopicForOrderTopic
     @KafkaListener(topics = ["order-outbox.topic"],
         groupId = "ORDER_OUTBOX",
         containerFactory = "orderOutboxListenerContainer",
@@ -114,7 +108,7 @@ class OrderService(
         val foundOutbox = orderOutboxRepository.findByOrderId(outbox.orderId)
             ?: run {
                 log.info { "No OrderNumber = ${outbox.orderId} found" }
-                OrderOutbox(id = null, aggId = "noop", processStage = ProcessStage.EXCEPTION, orderId = "noop")
+                OrderOutbox(id = null, aggId = "noop", processStage = ProcessStage.EXCEPTION, orderId = "noop", paymentIntentToken = "")
             }
 
         if(foundOutbox.processStage == ProcessStage.EXCEPTION) {
@@ -122,7 +116,7 @@ class OrderService(
             return
         }
 
-        val shippingMessage = generateShippingMessage(orderId = outbox.orderId)
+        val shippingMessage = generateShippingMessage(orderId = outbox.orderId, paymentIntentToken = outbox.paymentIntentToken)
         shippingTemplate.executeInTransaction {
             it.send(KafkaTopicNames.SHIPPING, outbox.orderId, shippingMessage)
         }
@@ -135,23 +129,27 @@ class OrderService(
         ack.acknowledge()
     }
 
-    private fun generateShippingMessage(orderId: String): ShippingMessage {
+    private fun generateShippingMessage(orderId: String, paymentIntentToken: String): ShippingMessage {
         val order = orderRepository.findByOrderNumber(orderId)
             ?: throw RuntimeException("${orderId}에 해당하는 주문이 없습니다!")
 
         val sellerRestClient = RestClient.create("http://localhost:8080")
-        val seller = sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
-            .accept(MediaType.APPLICATION_JSON)
-            .retrieve()
-            .body<GetSellerResponse>()
-            ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
+        val seller = readTimeoutExceptionRetryTemplate.execute<GetSellerResponse, Throwable> {
+            sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .body<GetSellerResponse>()
+                ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
+        }
 
         val userRestClient = RestClient.create("http://localhost:8080")
-        val user = userRestClient.get().uri("/service/user?userId={userId}", order.userId)
-            .accept(MediaType.APPLICATION_JSON)
-            .retrieve()
-            .body<GetUserResponse>()
-            ?: throw RuntimeException("유저 ${order.userId}에 해당하는 주소가 없습니다.")
+        val user = readTimeoutExceptionRetryTemplate.execute<GetUserResponse, Throwable> {
+            userRestClient.get().uri("/service/user?userId={userId}", order.userId)
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .body<GetUserResponse>()
+                ?: throw RuntimeException("유저 ${order.userId}에 해당하는 주소가 없습니다.")
+        }
 
         return ShippingMessage.newBuilder()
             .setOrderId(order.orderNumber)
@@ -164,11 +162,12 @@ class OrderService(
             .setSellerName(seller.sellerName)
             .setSellerLocationString(seller.address)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
+            .setPaymentIntentToken(paymentIntentToken)
             .build()
     }
 
     @KafkaListener(
-        topics = [KafkaTopicNames.ORDER_COMPENSATION],
+        topics = [KafkaTopicNames.COMPENSATION_REQUEST],
         concurrency = "3",
         containerFactory = "orderCompensationListenerContainerFactory",
         groupId = "ORDER_COMPENSATION"

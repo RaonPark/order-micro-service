@@ -135,6 +135,7 @@ services:
     container_name: backend
     ports:
       - "8080:8080"
+    restart: on-failure
     build:
       context: .
       dockerfile: Dockerfile

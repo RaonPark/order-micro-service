@@ -38,7 +38,6 @@ class TestController(
             log.info { "start time = $startTime" }
             val jobs = List(1_000) {
                 launch(Dispatchers.IO) {
-                    orderService.createOrder(orderRequest,)
                 }
             }
 

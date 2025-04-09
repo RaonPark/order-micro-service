@@ -3,10 +3,10 @@ package com.example.ordermicroservice.gateway
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.dto.CreateOrderRequest
-import com.example.ordermicroservice.dto.CreateOrderResponse
+import com.example.ordermicroservice.dto.SavePayRequest
 import com.example.ordermicroservice.dto.SavePayResponse
 import com.example.ordermicroservice.service.RedisService
-import com.fasterxml.jackson.core.type.TypeReference
+import com.example.ordermicroservice.vo.CreateOrderVo
 import com.fasterxml.jackson.databind.ObjectMapper
 import io.github.oshai.kotlinlogging.KotlinLogging
 import jakarta.servlet.http.HttpServletRequest
@@ -14,22 +14,17 @@ import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpHeaders
 import org.springframework.http.MediaType
-import org.springframework.http.ResponseEntity
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.core.NoProducerAvailableException
 import org.springframework.kafka.support.Acknowledgment
 import org.springframework.kafka.support.SendResult
 import org.springframework.retry.support.RetryTemplate
-import org.springframework.util.LinkedMultiValueMap
-import org.springframework.util.MultiValueMap
 import org.springframework.util.StreamUtils
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
-import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.client.RestClient
-import org.springframework.web.client.body
 import org.springframework.web.util.ContentCachingRequestWrapper
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletableFuture
@@ -40,7 +35,9 @@ class ApiGateway (
     private val redisService: RedisService,
     private val objectMapper: ObjectMapper,
     private val throttlingRequestTemplate: KafkaTemplate<String, ThrottlingRequest>,
-    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate
+    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate,
+    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate,
+    private val createOrderKafkaTemplate: KafkaTemplate<String, CreateOrderVo>
 ) {
     companion object {
         val restClient = RestClient.create("http://localhost:8080")
@@ -65,7 +62,7 @@ class ApiGateway (
         val header = getHeaders(httpServletRequest)
         log.info { header }
 
-        val request = ThrottlingRequest.newBuilder()
+        val orderRequest = ThrottlingRequest.newBuilder()
             .setRequestMethod(httpServletRequest.method)
             .setApiName(requestUri)
             .setHeader(header)
@@ -76,8 +73,20 @@ class ApiGateway (
 
         noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, ThrottlingRequest>>, NoProducerAvailableException> {
             throttlingRequestTemplate.executeInTransaction {
-                it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
+                it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, orderRequest)
             }
+        }
+    }
+
+    private fun getPaymentIntentToken(paymentRequest: SavePayRequest): String {
+        return readTimeoutExceptionRetryTemplate.execute<String, Throwable> {
+            restClient.post()
+                .uri("/service/savePaymentInfo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(paymentRequest)
+                .retrieve()
+                .body(String::class.java)
+                ?: throw RuntimeException("Payment Service 에 문제가 생겼습니다.")
         }
     }
 
@@ -104,6 +113,17 @@ class ApiGateway (
         }
     }
 
+    internal data class OrderPayUnionBody(
+        val orderRequest: CreateOrderRequest,
+        val paymentRequest: SavePayRequest
+    )
+
+    private fun parseOrderBodyToString(body: String): String {
+        val unionBody = objectMapper.readValue(body, OrderPayUnionBody::class.java)
+        val paymentIntentToken = getPaymentIntentToken(unionBody.paymentRequest)
+        return objectMapper.writeValueAsString(CreateOrderVo.convertDto2Vo(unionBody.orderRequest, paymentIntentToken))
+    }
+
     private fun getHeaders(httpServletRequest: HttpServletRequest): Map<String, String> {
         val headerMap = mutableMapOf<String, String>()
         httpServletRequest.headerNames.toList().forEach {headerName ->
@@ -111,22 +131,6 @@ class ApiGateway (
         }
 
         return headerMap
-    }
-
-    // inline 함수는 컴파일 시에 실제 코드가 들어가게 된다.
-    // 거기에 reified 키워드를 사용하면 구체화된 DTO 클래스를 사용할 수 있는 것이다.
-    // 원래라면 body 에는 제네릭을 사용할 수 없다.
-    private inline fun <reified DTO> routePost(requestUri: String, headers: Consumer<HttpHeaders>, body: String): DTO {
-        val result = restClient.post()
-            .uri(requestUri)
-            .headers(headers)
-            .body(body)
-            .contentType(MediaType.APPLICATION_JSON)
-            .retrieve()
-            .body(DTO::class.java)
-            ?: throw RuntimeException("$requestUri 의 응답이 없습니다.")
-
-        return result
     }
 
     @KafkaListener(
@@ -148,9 +152,9 @@ class ApiGateway (
             when(requests.requestMethod) {
                 "POST" -> {
                     if(GatewayRouter.orderRouter(requests.apiName)) {
-                        val header = map2HttpHeaderConsumer(requests.header)
-                        val result = routePost<CreateOrderResponse>(requests.apiName, header, requests.body)
-                        log.info { "결과 = $result" }
+                        val orderBody = parseOrderBodyToString(requests.body)
+                        log.info { "${requests.apiName} calling..." }
+                        routeOrder(requests.apiName, orderBody)
                     } else if(GatewayRouter.payRouter(requests.apiName)) {
                         val header = map2HttpHeaderConsumer(requests.header)
                         val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
@@ -167,8 +171,6 @@ class ApiGateway (
                 }
             }
 
-
-
             ack.acknowledge()
         }
     }
@@ -177,5 +179,37 @@ class ApiGateway (
         return Consumer { httpHeaders ->
             header.forEach { (key, value) -> httpHeaders.set(key, value) }
         }
+    }
+
+    private fun routeOrder(requestUri: String, body: String) {
+        when(requestUri) {
+            "/service/createOrder" -> {
+                log.info { "processing /createOrder ... $body" }
+                noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, CreateOrderVo>>, Throwable> {
+                    val orderVo = objectMapper.readValue(body, CreateOrderVo::class.java)
+                    createOrderKafkaTemplate.executeInTransaction {
+                        it.send(KafkaTopicNames.ORDER_REQUEST, requestUri, orderVo)
+                    }
+                }
+            } else -> {
+                log.info { "Unknown API Request : $requestUri" }
+            }
+        }
+    }
+
+    // inline 함수는 컴파일 시에 실제 코드가 들어가게 된다.
+    // 거기에 reified 키워드를 사용하면 구체화된 DTO 클래스를 사용할 수 있는 것이다.
+    // 원래라면 body 에는 제네릭을 사용할 수 없다.
+    private inline fun <reified DTO> routePost(requestUri: String, headers: Consumer<HttpHeaders>, body: String): DTO {
+        val result = restClient.post()
+            .uri(requestUri)
+            .headers(headers)
+            .body(body)
+            .contentType(MediaType.APPLICATION_JSON)
+            .retrieve()
+            .body(DTO::class.java)
+            ?: throw RuntimeException("$requestUri 의 응답이 없습니다.")
+
+        return result
     }
 }

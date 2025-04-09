@@ -82,4 +82,31 @@ class KafkaTopicConfig {
             .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
             .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
             .build()
+
+    @Bean
+    fun compensationTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.COMPENSATION_REQUEST)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun createOrderTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.ORDER_REQUEST)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun processPaymentTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.PAYMENT_REQUEST)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
 }

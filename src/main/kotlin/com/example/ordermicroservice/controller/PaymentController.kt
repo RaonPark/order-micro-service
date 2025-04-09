@@ -12,10 +12,8 @@ import org.springframework.web.bind.annotation.RestController
 class PaymentController(
     private val paymentService: PaymentService,
 ) {
-    @PostMapping("/pay")
-    fun pay(@RequestBody payment: SavePayRequest): SavePayResponse {
-        return paymentService.savePay(payment)
+    @PostMapping("/savePaymentInfo")
+    fun savePaymentInfo(@RequestBody payment: SavePayRequest): String {
+        return paymentService.generatePaymentIntentToken(payment)
     }
-
-
 }

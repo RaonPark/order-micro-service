@@ -47,6 +47,7 @@ class OrderOutboxService(
             .setAggId(orderOutbox.aggId)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
             .setOrderId(orderOutbox.orderId)
+            .setPaymentIntentToken(orderOutbox.paymentIntentToken)
             .build()
     }
 

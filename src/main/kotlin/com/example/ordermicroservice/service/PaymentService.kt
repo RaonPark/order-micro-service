@@ -7,29 +7,32 @@ import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.PaymentType
 import com.example.ordermicroservice.document.Payments
 import com.example.ordermicroservice.document.ProcessStage
-import com.example.ordermicroservice.dto.*
+import com.example.ordermicroservice.dto.SavePayRequest
+import com.example.ordermicroservice.dto.SavePayResponse
+import com.example.ordermicroservice.dto.WithdrawRequest
+import com.example.ordermicroservice.dto.WithdrawResponse
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
 import com.example.ordermicroservice.repository.mongo.PaymentRepository
 import com.example.ordermicroservice.support.DateTimeSupport
+import com.example.ordermicroservice.support.MachineIdGenerator
+import com.example.ordermicroservice.support.RetryableTopicForPaymentTopic
+import com.example.ordermicroservice.support.SnowflakeIdGenerator
+import com.example.ordermicroservice.vo.Compensation
+import com.example.ordermicroservice.vo.PaymentIntentTokenVo
 import com.example.ordermicroservice.vo.PaymentVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.MediaType
+import org.springframework.kafka.annotation.DltHandler
 import org.springframework.kafka.annotation.KafkaListener
-import org.springframework.kafka.annotation.RetryableTopic
 import org.springframework.kafka.core.KafkaTemplate
-import org.springframework.kafka.retrytopic.DltStrategy
-import org.springframework.kafka.retrytopic.TopicSuffixingStrategy
 import org.springframework.kafka.support.Acknowledgment
-import org.springframework.messaging.handler.annotation.SendTo
 import org.springframework.messaging.simp.SimpMessagingTemplate
-import org.springframework.retry.annotation.Backoff
+import org.springframework.retry.support.RetryTemplate
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
 import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.util.concurrent.CompletableFuture
 
 @Service
 class PaymentService(
@@ -37,55 +40,59 @@ class PaymentService(
     private val paymentOutboxRepository: PaymentOutboxRepository,
     private val redisService: RedisService,
     private val paymentStatusTemplate: KafkaTemplate<String, PaymentStatusMessage>,
-    private val simpMessagingTemplate: SimpMessagingTemplate
+    private val simpMessagingTemplate: SimpMessagingTemplate,
+    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
         val restClient = RestClient.create()
     }
-    fun savePay(payment: SavePayRequest): SavePayResponse {
-        val paymentId = generatePaymentId(payment)
-        val paymentType = PaymentType.of(payment.paymentType)
-        val createPayment = Payments.of(null, paymentId, paymentType, payment.cardNumber, payment.cardCvc, payment.amount, processStage = ProcessStage.BEFORE_PROCESS)
-        val aggId = redisService.getAggregatorId()
 
-        val savedPayment = paymentRepository.save(createPayment)
+    fun generatePaymentIntentToken(payment: SavePayRequest): String {
+       val tokenKey = SnowflakeIdGenerator(MachineIdGenerator.machineId()).nextId()
 
-        redisService.savePayment(aggId.toString(), PaymentVo.document2Pojo(savedPayment))
+        redisService.savePayment(tokenKey.toString(),
+            PaymentVo(paymentId = tokenKey.toString(),
+                amount = payment.amount,
+                cardNumber = payment.cardNumber,
+                cardCvc = payment.cardCvc,
+                paymentType = PaymentType.of(payment.paymentType)
+            )
+        )
 
-        val processStage = ProcessStage.BEFORE_PROCESS
+        return tokenKey.toString()
+    }
 
-        val outbox = PaymentOutbox.of(id = null, aggId = aggId.toString(),
-            processStage = processStage, paymentId = paymentId)
+    @KafkaListener(
+        topics = [KafkaTopicNames.PAYMENT_REQUEST],
+        concurrency = "3",
+        containerFactory = "processPaymentListenerContainerFactory",
+        groupId = "PROCESS_PAYMENT"
+    )
+    fun savePay(record: ConsumerRecord<String, PaymentIntentTokenVo>) {
+        val paymentIntentToken = record.value().paymentIntentToken
+
+        val paymentVo = redisService.getPayment(paymentIntentToken)
+
+        val paymentEntity = Payments.of(
+            id = null,
+            amount = paymentVo.amount,
+            cardNumber = paymentVo.cardNumber,
+            cardCvc = paymentVo.cardCvc,
+            paymentType = paymentVo.paymentType,
+            paymentId = paymentIntentToken,
+            processStage = ProcessStage.BEFORE_PROCESS
+        )
+
+        val savedPayment = paymentRepository.save(paymentEntity)
+
+        val outbox = PaymentOutbox.of(id = null, aggId = paymentIntentToken,
+            processStage = savedPayment.processStage, paymentId = paymentIntentToken)
 
         paymentOutboxRepository.save(outbox)
-
-        return SavePayResponse(
-            amount = savedPayment.amount,
-            paymentId = savedPayment.paymentId
-        )
     }
 
-    @OptIn(ExperimentalStdlibApi::class)
-    private fun generatePaymentId(payment: SavePayRequest): String {
-        val nowTime = Instant.now().toEpochMilli().toHexString()
-        val amount = payment.amount.toHexString()
-        val snowFlake = redisService.generateRandomNumber().toHexString()
-
-        return nowTime.plus(snowFlake).plus(amount)
-    }
-
-    @RetryableTopic(
-        retryTopicSuffix = "-retry",
-        dltTopicSuffix = "-dlt",
-        topicSuffixingStrategy = TopicSuffixingStrategy.SUFFIX_WITH_INDEX_VALUE,
-        concurrency = "3",
-        numPartitions = "10",
-        replicationFactor = "3",
-        dltStrategy = DltStrategy.ALWAYS_RETRY_ON_ERROR,
-        backoff = Backoff(value = 1000L, multiplier = 2.0, maxDelay = 20000L, random = true),
-        kafkaTemplate = "paymentOutboxTemplate"
-    )
+    @RetryableTopicForPaymentTopic
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_OUTBOX],
         groupId = "PAYMENT_OUTBOX",
         containerFactory = "paymentOutboxListenerContainer",
@@ -102,22 +109,22 @@ class PaymentService(
         val payment = paymentRepository.findByPaymentId(outbox.paymentId)
             ?: throw RuntimeException("${outbox.paymentId}에 해당하는 결제정보가 없습니다!")
 
-        var processedTime = ""
+        val processedTime: String
         if(payment.paymentType != PaymentType.CASH) {
-            //  TODO: payment 알고리즘 추가 필요!
-            // TODO: return 값은 여러 가지를 포함하겠지만 타임스탬프는 항상 포함!
-            val payResponse = restClient.post()
-                .uri("http://localhost:8080/service/withdraw")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(
-                    WithdrawRequest(
-                        accountNumber = "123-123-123-123",
-                        amount = payment.amount
+            val payResponse = readTimeoutExceptionRetryTemplate.execute<WithdrawResponse, Throwable> {
+                restClient.post()
+                    .uri("http://localhost:8080/service/withdraw")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(
+                        WithdrawRequest(
+                            accountNumber = "123-123-123-123",
+                            amount = payment.amount
+                        )
                     )
-                )
-                .retrieve()
-                .body(WithdrawResponse::class.java)
-                ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+                    .retrieve()
+                    .body(WithdrawResponse::class.java)
+                    ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+            }
 
             if (!payResponse.isValid || !payResponse.isCompleted) {
                 throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
@@ -150,7 +157,6 @@ class PaymentService(
             .build()
     }
 
-
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_STATUS],
         groupId = "PAYMENT_STATUS",
         concurrency = "3",
@@ -162,5 +168,11 @@ class PaymentService(
         log.info { "${paymentStatus.paymentId}에 대한 결제가 완료되었습니다." }
 
         simpMessagingTemplate.convertAndSend("/topic/paymentState", "{status: true}")
+    }
+
+    @DltHandler
+    fun processCompensation(compensation: Compensation) {
+        val orderNumber = compensation.orderNumber
+
     }
 }

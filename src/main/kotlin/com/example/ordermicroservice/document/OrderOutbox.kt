@@ -9,10 +9,11 @@ data class OrderOutbox(
     var processStage: ProcessStage,
     val aggId: String,
     val orderId: String,
+    val paymentIntentToken: String,
 ) {
     companion object {
-        fun of(id: String? = null, processStage: ProcessStage, aggId: String, orderId: String): OrderOutbox {
-            return OrderOutbox(id, processStage, aggId, orderId)
+        fun of(id: String? = null, processStage: ProcessStage, aggId: String, orderId: String, paymentIntentToken: String): OrderOutbox {
+            return OrderOutbox(id, processStage, aggId, orderId, paymentIntentToken)
         }
     }
 }

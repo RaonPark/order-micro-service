@@ -1,4 +1,4 @@
-package com.example.ordermicroservice.config
+package com.example.ordermicroservice.config.order.producer
 
 import com.avro.order.OrderOutboxMessage
 import io.confluent.kafka.serializers.KafkaAvroSerializer
