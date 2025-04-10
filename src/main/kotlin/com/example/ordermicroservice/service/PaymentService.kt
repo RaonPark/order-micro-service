@@ -13,6 +13,7 @@ import com.example.ordermicroservice.dto.WithdrawRequest
 import com.example.ordermicroservice.dto.WithdrawResponse
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
 import com.example.ordermicroservice.repository.mongo.PaymentRepository
+import com.example.ordermicroservice.repository.mysql.CardRepository
 import com.example.ordermicroservice.support.DateTimeSupport
 import com.example.ordermicroservice.support.MachineIdGenerator
 import com.example.ordermicroservice.support.RetryableTopicForPaymentTopic
@@ -41,11 +42,12 @@ class PaymentService(
     private val redisService: RedisService,
     private val paymentStatusTemplate: KafkaTemplate<String, PaymentStatusMessage>,
     private val simpMessagingTemplate: SimpMessagingTemplate,
-    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate
+    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate,
+    private val cardRepository: CardRepository,
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
-        val restClient = RestClient.create()
+        val restClient = RestClient.create("http://localhost:8080")
     }
 
     fun generatePaymentIntentToken(payment: SavePayRequest): String {
@@ -109,15 +111,22 @@ class PaymentService(
         val payment = paymentRepository.findByPaymentId(outbox.paymentId)
             ?: throw RuntimeException("${outbox.paymentId}에 해당하는 결제정보가 없습니다!")
 
+        log.info { "결제정보 = $payment" }
+
         val processedTime: String
-        if(payment.paymentType != PaymentType.CASH) {
+        if(payment.paymentType == PaymentType.DEBIT || payment.paymentType == PaymentType.CREDIT) {
+            val accountNumber = cardRepository.findAccountNumberByCardNumber(payment.cardNumber!!)
+                ?: throw RuntimeException("${payment.cardNumber}에 해당하는 계좌가 존재하지 않습니다!")
+
+            log.info { "$accountNumber 에 출금 요청 진행" }
+
             val payResponse = readTimeoutExceptionRetryTemplate.execute<WithdrawResponse, Throwable> {
                 restClient.post()
-                    .uri("http://localhost:8080/service/withdraw")
+                    .uri("/service/withdraw")
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(
                         WithdrawRequest(
-                            accountNumber = "123-123-123-123",
+                            accountNumber = accountNumber,
                             amount = payment.amount
                         )
                     )
@@ -125,6 +134,8 @@ class PaymentService(
                     .body(WithdrawResponse::class.java)
                     ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
             }
+
+            log.info { "$accountNumber 에 출금 요청 완료. ${payResponse.processedTime}" }
 
             if (!payResponse.isValid || !payResponse.isCompleted) {
                 throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
