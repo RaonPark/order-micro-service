@@ -20,7 +20,7 @@ Content-Type: application/json
   },
   "paymentRequest": {
     "amount": 100,
-    "paymentType": "카드",
+    "paymentType": "신용카드",
     "cardNumber": "283-182-3728-38",
     "cardCvc": "232"
   }
