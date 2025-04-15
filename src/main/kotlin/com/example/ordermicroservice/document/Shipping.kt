@@ -10,5 +10,6 @@ data class Shipping(
     val orderNumber: String,
     val address: GeoJsonPoint,
     val userId: String,
+    var processStage: ServiceProcessStage
 ) {
 }

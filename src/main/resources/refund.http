@@ -1,0 +1,7 @@
+POST http://localhost:8080/gateway/service/refundOrder
+Content-Type: application/json
+
+{
+  "orderNumber": "134497449159483392",
+  "paymentNumber": "134497449042042880"
+}

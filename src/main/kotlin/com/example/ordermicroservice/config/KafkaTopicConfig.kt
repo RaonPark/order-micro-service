@@ -109,4 +109,31 @@ class KafkaTopicConfig {
             .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
             .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
             .build()
+
+    @Bean
+    fun refundOrderTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.ORDER_REFUND)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun cancelShippingTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.SHIPPING_CANCEL)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
+
+    @Bean
+    fun cancelPaymentTopic(): NewTopic =
+        TopicBuilder.name(KafkaTopicNames.PAYMENT_CANCEL)
+            .partitions(10)
+            .replicas(3)
+            .config(TopicConfig.MIN_IN_SYNC_REPLICAS_CONFIG, "3")
+            .config(TopicConfig.COMPRESSION_TYPE_CONFIG, "producer")
+            .build()
 }

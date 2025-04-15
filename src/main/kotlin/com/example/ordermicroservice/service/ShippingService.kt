@@ -1,7 +1,11 @@
 package com.example.ordermicroservice.service
 
+import com.avro.order.OrderRefundMessage
+import com.avro.payment.PAYMENT_TYPE
+import com.avro.payment.PaymentRequestMessage
 import com.avro.shipping.ShippingMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
+import com.example.ordermicroservice.document.ServiceProcessStage
 import com.example.ordermicroservice.document.Shipping
 import com.example.ordermicroservice.repository.mongo.ShippingRepository
 import com.example.ordermicroservice.support.RetryableTopicForShippingTopic
@@ -23,7 +27,7 @@ class ShippingService(
     private val shippingRepository: ShippingRepository,
     private val redisService: RedisService,
     private val compensationKafkaTemplate: KafkaTemplate<String, Compensation>,
-    private val processPaymentKafkaTemplate: KafkaTemplate<String, PaymentIntentTokenVo>,
+    private val paymentRequestKafkaTemplate: KafkaTemplate<String, PaymentRequestMessage>,
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -47,9 +51,13 @@ class ShippingService(
         shippingRepository.save(shipping)
         log.info { "$shipping 에 대한 배송정보가 저장되었습니다." }
 
-        processPaymentKafkaTemplate.executeInTransaction {
-            it.send(KafkaTopicNames.PAYMENT_REQUEST, shippingMessage.paymentIntentToken,
-                PaymentIntentTokenVo(paymentIntentToken = shippingMessage.paymentIntentToken))
+        paymentRequestKafkaTemplate.executeInTransaction {
+            val paymentRequest = PaymentRequestMessage.newBuilder()
+                .setPaymentIntentToken(shippingMessage.paymentIntentToken)
+                .setType(PAYMENT_TYPE.PAY)
+                .build()
+
+            it.send(KafkaTopicNames.PAYMENT_REQUEST, shippingMessage.paymentIntentToken, paymentRequest)
         }
 
         ack.acknowledge()
@@ -80,7 +88,36 @@ class ShippingService(
             orderNumber = orderNumber,
             address = GeoJsonPoint(shippingMessage.shippingLocation.longitude,
                 shippingMessage.shippingLocation.latitude),
-            userId = shippingMessage.username
+            userId = shippingMessage.username,
+            processStage = ServiceProcessStage.CONFIRM
         )
+    }
+
+    @KafkaListener(
+        topics = [KafkaTopicNames.SHIPPING_CANCEL],
+        concurrency = "3",
+        groupId = "ORDER_REFUND",
+        containerFactory = "refundOrderListenerContainerFactory"
+    )
+    fun processRefundShipping(record: ConsumerRecord<String, OrderRefundMessage>, ack: Acknowledgment) {
+        val orderRefund = record.value()
+
+        val shippingRefund = shippingRepository.findByOrderNumber(orderId = orderRefund.orderNumber)
+            ?: throw RuntimeException("해당하는 배송정보가 없습니다.")
+
+        shippingRefund.processStage = ServiceProcessStage.CANCELED
+
+        shippingRepository.save(shippingRefund)
+
+        paymentRequestKafkaTemplate.executeInTransaction {
+            val paymentRequest = PaymentRequestMessage.newBuilder()
+                .setPaymentIntentToken(orderRefund.paymentNumber)
+                .setType(PAYMENT_TYPE.REFUND)
+                .build()
+
+            it.send(KafkaTopicNames.PAYMENT_REQUEST, orderRefund.paymentNumber, paymentRequest)
+        }
+
+        ack.acknowledge()
     }
 }

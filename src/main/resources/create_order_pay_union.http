@@ -19,7 +19,7 @@ Content-Type: application/json
     "sellerId": "1"
   },
   "paymentRequest": {
-    "amount": 100,
+    "amount": 316900,
     "paymentType": "신용카드",
     "cardNumber": "283-182-3728-38",
     "cardCvc": "232"

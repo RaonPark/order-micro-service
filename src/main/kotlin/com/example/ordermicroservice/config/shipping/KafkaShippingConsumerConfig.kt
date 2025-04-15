@@ -1,4 +1,4 @@
-package com.example.ordermicroservice.config
+package com.example.ordermicroservice.config.shipping
 
 import com.avro.shipping.ShippingMessage
 import io.confluent.kafka.serializers.KafkaAvroDeserializer

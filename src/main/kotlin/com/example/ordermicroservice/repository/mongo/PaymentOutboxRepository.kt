@@ -6,4 +6,5 @@ import org.springframework.data.mongodb.repository.MongoRepository
 
 interface PaymentOutboxRepository: MongoRepository<PaymentOutbox, String> {
     fun findByProcessStage(processStage: ProcessStage): List<PaymentOutbox>
+    fun findByPaymentIdAndProcessStage(paymentId: String, processStage: ProcessStage): PaymentOutbox?
 }

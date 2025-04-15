@@ -13,4 +13,7 @@ object KafkaTopicNames {
     const val COMPENSATION_REQUEST = "compensation.request.topic"
     const val ORDER_REQUEST = "order.request.topic"
     const val PAYMENT_REQUEST = "payment.request.topic"
+    const val ORDER_REFUND = "order.refund.topic"
+    const val SHIPPING_CANCEL = "shipping.cancel.topic"
+    const val PAYMENT_CANCEL = "payment.cancel.topic"
 }

@@ -1,5 +1,6 @@
 package com.example.ordermicroservice.gateway
 
+import com.avro.order.OrderRefundMessage
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.dto.CreateOrderRequest
@@ -37,7 +38,8 @@ class ApiGateway (
     private val throttlingRequestTemplate: KafkaTemplate<String, ThrottlingRequest>,
     @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate,
     @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate,
-    private val createOrderKafkaTemplate: KafkaTemplate<String, CreateOrderVo>
+    private val createOrderKafkaTemplate: KafkaTemplate<String, CreateOrderVo>,
+    private val refundOrderKafkaTemplate: KafkaTemplate<String, OrderRefundMessage>,
 ) {
     companion object {
         val restClient = RestClient.create("http://localhost:8080")
@@ -152,9 +154,7 @@ class ApiGateway (
             when(requests.requestMethod) {
                 "POST" -> {
                     if(GatewayRouter.orderRouter(requests.apiName)) {
-                        val orderBody = parseOrderBodyToString(requests.body)
-                        log.info { "${requests.apiName} calling..." }
-                        routeOrder(requests.apiName, orderBody)
+                        routeOrder(requests)
                     } else if(GatewayRouter.payRouter(requests.apiName)) {
                         val header = map2HttpHeaderConsumer(requests.header)
                         val result = routePost<SavePayResponse>(requests.apiName, header, requests.body)
@@ -181,18 +181,29 @@ class ApiGateway (
         }
     }
 
-    private fun routeOrder(requestUri: String, body: String) {
-        when(requestUri) {
+    private fun routeOrder(requests: ThrottlingRequest) {
+        when(requests.apiName) {
             "/service/createOrder" -> {
-                log.info { "processing /createOrder ... $body" }
+                val orderBody = parseOrderBodyToString(requests.body)
+                log.info { "${requests.apiName} calling..." }
+                log.info { "processing /createOrder ... $orderBody" }
                 noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, CreateOrderVo>>, Throwable> {
-                    val orderVo = objectMapper.readValue(body, CreateOrderVo::class.java)
+                    val orderVo = objectMapper.readValue(orderBody, CreateOrderVo::class.java)
                     createOrderKafkaTemplate.executeInTransaction {
-                        it.send(KafkaTopicNames.ORDER_REQUEST, requestUri, orderVo)
+                        it.send(KafkaTopicNames.ORDER_REQUEST, orderVo.paymentIntentToken, orderVo)
                     }
                 }
-            } else -> {
-                log.info { "Unknown API Request : $requestUri" }
+            }
+            "/service/refundOrder" -> {
+                noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, OrderRefundMessage>>, Throwable> {
+                    val orderRefundMessage = objectMapper.readValue(requests.body, OrderRefundMessage::class.java)
+                    refundOrderKafkaTemplate.executeInTransaction {
+                        it.send(KafkaTopicNames.ORDER_REFUND, orderRefundMessage.orderNumber, orderRefundMessage)
+                    }
+                }
+            }
+            else -> {
+                log.info { "Unknown API Request : ${requests.apiName}" }
             }
         }
     }
