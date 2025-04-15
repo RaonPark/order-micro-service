@@ -6,5 +6,5 @@ import org.springframework.data.mongodb.repository.MongoRepository
 
 interface OrderOutboxRepository: MongoRepository<OrderOutbox, String> {
     fun findByProcessStage(processStage: ProcessStage): List<OrderOutbox>
-    fun findByOrderId(orderId: String): OrderOutbox?
+    fun findByOrderIdAndProcessStage(orderId: String, processStage: ProcessStage): OrderOutbox?
 }

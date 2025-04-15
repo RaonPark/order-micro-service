@@ -4,11 +4,12 @@ import com.example.ordermicroservice.document.DepositResult
 
 data class DepositResponse(
     val accountNumber: String,
-    val result: DepositResult
+    val result: Boolean,
+    val processedTime: String
 ) {
     companion object {
-        fun of(accountNumber: String, depositResult: DepositResult): DepositResponse {
-            return DepositResponse(accountNumber, depositResult)
+        fun of(accountNumber: String, depositResult: Boolean, processedTime: String): DepositResponse {
+            return DepositResponse(accountNumber, depositResult, processedTime)
         }
     }
 }

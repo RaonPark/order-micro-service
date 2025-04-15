@@ -19,13 +19,8 @@ class AccountController(
     private val accountService: AccountService
 ) {
     @PostMapping("/deposit")
-    fun deposit(@RequestBody depositRequest: DepositRequest): DepositResponse {
-        accountService.depositNew(depositRequest)
-
-        return DepositResponse.of(
-            depositResult = DepositResult.SUCCESS,
-            accountNumber = depositRequest.accountNumber
-        )
+    fun deposit(@RequestBody depositRequest: DepositRequest): ResponseEntity<DepositResponse> {
+        return ResponseEntity.ok(accountService.depositNew(depositRequest))
     }
 
     @PostMapping("/withdraw")

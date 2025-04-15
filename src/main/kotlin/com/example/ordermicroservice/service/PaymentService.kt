@@ -1,16 +1,15 @@
 package com.example.ordermicroservice.service
 
+import com.avro.payment.PAYMENT_TYPE
 import com.avro.payment.PaymentOutboxMessage
+import com.avro.payment.PaymentRequestMessage
 import com.avro.payment.PaymentStatusMessage
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.PaymentOutbox
 import com.example.ordermicroservice.document.PaymentType
 import com.example.ordermicroservice.document.Payments
 import com.example.ordermicroservice.document.ProcessStage
-import com.example.ordermicroservice.dto.SavePayRequest
-import com.example.ordermicroservice.dto.SavePayResponse
-import com.example.ordermicroservice.dto.WithdrawRequest
-import com.example.ordermicroservice.dto.WithdrawResponse
+import com.example.ordermicroservice.dto.*
 import com.example.ordermicroservice.repository.mongo.PaymentOutboxRepository
 import com.example.ordermicroservice.repository.mongo.PaymentRepository
 import com.example.ordermicroservice.repository.mysql.CardRepository
@@ -19,7 +18,6 @@ import com.example.ordermicroservice.support.MachineIdGenerator
 import com.example.ordermicroservice.support.RetryableTopicForPaymentTopic
 import com.example.ordermicroservice.support.SnowflakeIdGenerator
 import com.example.ordermicroservice.vo.Compensation
-import com.example.ordermicroservice.vo.PaymentIntentTokenVo
 import com.example.ordermicroservice.vo.PaymentVo
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.apache.kafka.clients.consumer.ConsumerRecord
@@ -33,7 +31,6 @@ import org.springframework.messaging.simp.SimpMessagingTemplate
 import org.springframework.retry.support.RetryTemplate
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
-import java.time.Instant
 
 @Service
 class PaymentService(
@@ -68,12 +65,28 @@ class PaymentService(
     @KafkaListener(
         topics = [KafkaTopicNames.PAYMENT_REQUEST],
         concurrency = "3",
-        containerFactory = "processPaymentListenerContainerFactory",
+        containerFactory = "paymentRequestListenerContainerFactory",
         groupId = "PROCESS_PAYMENT"
     )
-    fun savePay(record: ConsumerRecord<String, PaymentIntentTokenVo>) {
-        val paymentIntentToken = record.value().paymentIntentToken
+    fun requestPay(record: ConsumerRecord<String, PaymentRequestMessage>) {
+        val paymentRequest = record.value()
 
+        log.info { "paymentRequest is here ! = $paymentRequest" }
+
+        when(paymentRequest.type) {
+            PAYMENT_TYPE.PAY -> {
+                savePay(paymentRequest.paymentIntentToken)
+            }
+            PAYMENT_TYPE.REFUND -> {
+                refundPayment(paymentIntentToken = paymentRequest.paymentIntentToken)
+            }
+            else -> {
+                log.info { "옳지 않은 결제 타입입니다. ${paymentRequest.type}" }
+            }
+        }
+    }
+
+    private fun savePay(paymentIntentToken: String) {
         val paymentVo = redisService.getPayment(paymentIntentToken)
 
         val paymentEntity = Payments.of(
@@ -94,6 +107,21 @@ class PaymentService(
         paymentOutboxRepository.save(outbox)
     }
 
+    private fun refundPayment(paymentIntentToken: String) {
+        val payment = paymentRepository.findByPaymentId(paymentIntentToken)
+            ?: throw RuntimeException("$paymentIntentToken 에 해당하는 거래가 없습니다.")
+
+        if(payment.processStage == ProcessStage.PROCESSED) {
+            payment.processStage = ProcessStage.BEFORE_CANCEL
+
+            val outbox = PaymentOutbox.of(id = null, aggId = paymentIntentToken,
+                processStage = payment.processStage, paymentId = paymentIntentToken)
+
+            paymentOutboxRepository.save(outbox)
+            paymentRepository.save(payment)
+        }
+    }
+
     @RetryableTopicForPaymentTopic
     @KafkaListener(topics = [KafkaTopicNames.PAYMENT_OUTBOX],
         groupId = "PAYMENT_OUTBOX",
@@ -103,7 +131,11 @@ class PaymentService(
     fun processOutbox(record: ConsumerRecord<String, PaymentOutboxMessage>, ack: Acknowledgment) {
         val outbox = record.value()
 
-        if(ProcessStage.of(outbox.processStage.name) != ProcessStage.PENDING) {
+        val outboxStage = ProcessStage.of(outbox.processStage.name)
+
+        log.info { "결제정보 : $outbox, outbox stage = $outboxStage" }
+
+        if(!(outboxStage == ProcessStage.PENDING || outboxStage == ProcessStage.BEFORE_CANCEL)) {
             return
         }
 
@@ -120,37 +152,75 @@ class PaymentService(
 
             log.info { "$accountNumber 에 출금 요청 진행" }
 
-            val payResponse = readTimeoutExceptionRetryTemplate.execute<WithdrawResponse, Throwable> {
-                restClient.post()
-                    .uri("/service/withdraw")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(
-                        WithdrawRequest(
-                            accountNumber = accountNumber,
-                            amount = payment.amount
-                        )
-                    )
-                    .retrieve()
-                    .body(WithdrawResponse::class.java)
-                    ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+            when(outbox.processStage) {
+                com.avro.support.ProcessStage.PENDING -> {
+                    val payResponse = readTimeoutExceptionRetryTemplate.execute<WithdrawResponse, Throwable> {
+                        restClient.post()
+                            .uri("/service/withdraw")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(
+                                WithdrawRequest(
+                                    accountNumber = accountNumber,
+                                    amount = payment.amount
+                                )
+                            )
+                            .retrieve()
+                            .body(WithdrawResponse::class.java)
+                            ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+                    }
+
+                    log.info { "$accountNumber 에 출금 요청 완료. ${payResponse.processedTime}" }
+
+                    if (!payResponse.isValid || !payResponse.isCompleted) {
+                        throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
+                    }
+
+                    processedTime = payResponse.processedTime
+                    payment.processStage = ProcessStage.PROCESSED
+                    outbox.processStage = com.avro.support.ProcessStage.PROCESSED
+                }
+                com.avro.support.ProcessStage.BEFORE_CANCEL -> {
+                    val payResponse = readTimeoutExceptionRetryTemplate.execute<DepositResponse, Throwable> {
+                        restClient.post()
+                            .uri("/service/deposit")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(
+                                DepositRequest.of(
+                                    accountNumber = accountNumber,
+                                    amount = payment.amount
+                                )
+                            )
+                            .retrieve()
+                            .body(DepositResponse::class.java)
+                            ?: throw RuntimeException("페이 서비스가 올바르게 수행되고 있지 않습니다.")
+                    }
+
+                    log.info { "$accountNumber 에 입금 요청 완료. ${payResponse.processedTime}" }
+
+                    if (!payResponse.result) {
+                        throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
+                    }
+
+                    processedTime = payResponse.processedTime
+
+                    payment.processStage = ProcessStage.CANCELED
+                    outbox.processStage = com.avro.support.ProcessStage.CANCELED
+                }
+                else -> {
+                    log.info { "error!" }
+                    return
+                }
             }
-
-            log.info { "$accountNumber 에 출금 요청 완료. ${payResponse.processedTime}" }
-
-            if (!payResponse.isValid || !payResponse.isCompleted) {
-                throw RuntimeException("페이 서비스에서 문제가 생겼습니다.")
-            }
-
-            processedTime = payResponse.processedTime
         } else {
             processedTime = DateTimeSupport.getNowTimeWithKoreaZoneAndFormatter()
         }
 
-        payment.processStage = ProcessStage.PROCESSED
         paymentRepository.save(payment)
+        val dbOutbox = paymentOutboxRepository.findByPaymentIdAndProcessStage(paymentId = outbox.paymentId, processStage = outboxStage)
+            ?: throw RuntimeException("Error in Payment!")
 
-        // send payment is finished.
-        outbox.processStage = com.avro.support.ProcessStage.PROCESSED
+        dbOutbox.processStage = ProcessStage.of(outbox.processStage.name)
+        paymentOutboxRepository.save(dbOutbox)
 
         val paymentStatus = buildPaymentStatus(payment.paymentId, processedTime)
         paymentStatusTemplate.executeInTransaction {

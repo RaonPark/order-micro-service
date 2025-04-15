@@ -1,12 +1,14 @@
 package com.example.ordermicroservice.service
 
 import com.avro.order.OrderOutboxMessage
+import com.avro.order.OrderRefundMessage
 import com.avro.shipping.ShippingMessage
 import com.avro.support.geojson.Location
 import com.example.ordermicroservice.constants.KafkaTopicNames
-import com.example.ordermicroservice.document.*
-import com.example.ordermicroservice.dto.CreateOrderRequest
-import com.example.ordermicroservice.dto.CreateOrderResponse
+import com.example.ordermicroservice.document.OrderOutbox
+import com.example.ordermicroservice.document.Orders
+import com.example.ordermicroservice.document.ProcessStage
+import com.example.ordermicroservice.document.ServiceProcessStage
 import com.example.ordermicroservice.dto.GetSellerResponse
 import com.example.ordermicroservice.dto.GetUserResponse
 import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
@@ -23,6 +25,7 @@ import org.springframework.http.MediaType
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.kafka.core.KafkaTemplate
 import org.springframework.kafka.support.Acknowledgment
+import org.springframework.kafka.support.SendResult
 import org.springframework.retry.support.RetryTemplate
 import org.springframework.stereotype.Service
 import org.springframework.web.client.RestClient
@@ -30,7 +33,7 @@ import org.springframework.web.client.body
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.util.*
+import java.util.concurrent.CompletableFuture
 
 @Service
 class OrderService(
@@ -38,7 +41,9 @@ class OrderService(
     private val orderOutboxRepository: OrderOutboxRepository,
     private val redisService: RedisService,
     private val shippingTemplate: KafkaTemplate<String, ShippingMessage>,
-    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate
+    private val orderRefundKafkaTemplate: KafkaTemplate<String, OrderRefundMessage>,
+    @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate,
+    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -100,12 +105,25 @@ class OrderService(
 
         log.info { "$outbox order-outbox.topic이 들어왔습니다." }
 
-        if(ProcessStage.PENDING != ProcessStage.of(outbox.processStage.name)) {
-            log.info { "${outbox.processStage.name}이 올바르지 않습니다." }
-            return
+        when(ProcessStage.of(outbox.processStage.name)) {
+            ProcessStage.PENDING -> {
+                processOrderUsingOutbox(outbox)
+            }
+            ProcessStage.CANCELED -> {
+                refundOrderUsingOutbox(outbox)
+            }
+            else -> {
+                log.info { "outbox 상태가 올바르지 않습니다." }
+                ack.acknowledge()
+                return
+            }
         }
 
-        val foundOutbox = orderOutboxRepository.findByOrderId(outbox.orderId)
+        ack.acknowledge()
+    }
+
+    private fun processOrderUsingOutbox(outbox: OrderOutboxMessage) {
+        val foundOutbox = orderOutboxRepository.findByOrderIdAndProcessStage(outbox.orderId, ProcessStage.PENDING)
             ?: run {
                 log.info { "No OrderNumber = ${outbox.orderId} found" }
                 OrderOutbox(id = null, aggId = "noop", processStage = ProcessStage.EXCEPTION, orderId = "noop", paymentIntentToken = "")
@@ -125,8 +143,29 @@ class OrderService(
 
         foundOutbox.processStage = ProcessStage.PROCESSED
         orderOutboxRepository.save(foundOutbox)
+    }
 
-        ack.acknowledge()
+    private fun refundOrderUsingOutbox(outbox: OrderOutboxMessage) {
+        log.info { "환불 처리를 진행합니다 : [주문] 환불 완료" }
+
+        val dbOutbox = orderOutboxRepository.findByOrderIdAndProcessStage(outbox.orderId, ProcessStage.BEFORE_CANCEL)
+            ?: throw RuntimeException("주문을 찾을 수 없습니다!")
+
+        dbOutbox.processStage = ProcessStage.CANCELED
+
+        log.info { dbOutbox }
+
+        orderOutboxRepository.save(dbOutbox)
+
+        noProducerAvailableExceptionRetryTemplate.execute<CompletableFuture<SendResult<String, OrderRefundMessage>>, Throwable> {
+            val orderRefund = OrderRefundMessage.newBuilder()
+                .setOrderNumber(outbox.orderId)
+                .setPaymentNumber(outbox.paymentIntentToken)
+                .build()
+            orderRefundKafkaTemplate.executeInTransaction {
+                it.send(KafkaTopicNames.SHIPPING_CANCEL, outbox.paymentIntentToken, orderRefund)
+            }
+        }
     }
 
     private fun generateShippingMessage(orderId: String, paymentIntentToken: String): ShippingMessage {
@@ -182,7 +221,7 @@ class OrderService(
         txOrder.processed = ServiceProcessStage.EXCEPTION
         orderRepository.save(txOrder)
 
-        val outbox = orderOutboxRepository.findByOrderId(order.orderNumber)
+        val outbox = orderOutboxRepository.findByOrderIdAndProcessStage(order.orderNumber, ProcessStage.PROCESSED)
             ?: throw RuntimeException("Order Outbox 에 해당 $order.orderNumber 주문이 없습니다.")
 
         outbox.processStage = ProcessStage.EXCEPTION
@@ -190,5 +229,31 @@ class OrderService(
         orderOutboxRepository.save(outbox)
 
         ack.acknowledge()
+    }
+
+
+    @KafkaListener(
+        topics = [KafkaTopicNames.ORDER_REFUND],
+        concurrency = "3",
+        groupId = "REFUND_ORDER",
+        containerFactory = "refundOrderListenerContainerFactory"
+    )
+    fun processRefund(record: ConsumerRecord<String, OrderRefundMessage>) {
+        val refund = record.value()
+
+        val orderOutbox = OrderOutbox.of(
+            id = null,
+            aggId = refund.orderNumber,
+            orderId = refund.orderNumber,
+            paymentIntentToken = refund.paymentNumber,
+            processStage = ProcessStage.BEFORE_CANCEL
+        )
+
+        val savedOrder = orderRepository.findByOrderNumber(orderNumber = refund.orderNumber)
+            ?: throw RuntimeException("${refund.orderNumber}에 해당하는 주문이 없습니다.")
+        savedOrder.processed = ServiceProcessStage.CANCELED
+        orderRepository.save(savedOrder)
+
+        orderOutboxRepository.save(orderOutbox)
     }
 }

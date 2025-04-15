@@ -1,4 +1,4 @@
-FROM gradle:8.13.0-jdk17-corretto as builder
+FROM gradle:8.13.0-jdk17-corretto AS builder
 WORKDIR /app
 COPY . .
 RUN gradle clean build -x test --parallel

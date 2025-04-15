@@ -1,0 +1,19 @@
+{
+  "name": "PaymentRequestMessage",
+  "namespace": "com.avro.payment",
+  "type": "record",
+  "fields": [
+    {
+      "name": "paymentIntentToken",
+      "type": "string"
+    },
+    {
+      "name": "type",
+      "type": {
+        "type": "enum",
+        "name": "PAYMENT_TYPE",
+        "symbols": ["PAY", "REFUND"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "name": "OrderRefundMessage",
+  "namespace": "com.avro.order",
+  "type": "record",
+  "fields": [
+    {
+      "name": "orderNumber",
+      "type": "string"
+    },
+    {
+      "name": "paymentNumber",
+      "type": "string"
+    }
+  ]
+}

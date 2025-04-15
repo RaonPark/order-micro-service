@@ -2,5 +2,5 @@
   "name": "ProcessStage",
   "namespace": "com.avro.support",
   "type": "enum",
-  "symbols": ["BEFORE_PROCESS", "PENDING", "PROCESSED", "NO_OP", "EXCEPTION"]
+  "symbols": ["BEFORE_PROCESS", "PENDING", "PROCESSED", "BEFORE_CANCEL", "CANCELED", "NO_OP", "EXCEPTION"]
 }
