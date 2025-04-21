@@ -66,7 +66,6 @@ class OrderService(
             orderedTime = getNowTime(),
             products = order.products,
             serviceProcessStage = ServiceProcessStage.NOT_PROCESS,
-            sellerId = order.sellerId,
             paymentIntentToken = order.paymentIntentToken
         )
 
@@ -172,15 +171,6 @@ class OrderService(
         val order = orderRepository.findByOrderNumber(orderId)
             ?: throw RuntimeException("${orderId}에 해당하는 주문이 없습니다!")
 
-        val sellerRestClient = RestClient.create("http://localhost:8080")
-        val seller = readTimeoutExceptionRetryTemplate.execute<GetSellerResponse, Throwable> {
-            sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body<GetSellerResponse>()
-                ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
-        }
-
         val userRestClient = RestClient.create("http://localhost:8080")
         val user = readTimeoutExceptionRetryTemplate.execute<GetUserResponse, Throwable> {
             userRestClient.get().uri("/service/user?userId={userId}", order.userId)
@@ -198,8 +188,6 @@ class OrderService(
                 .build())
             .setShippingLocationString(user.address)
             .setUsername(user.username)
-            .setSellerName(seller.sellerName)
-            .setSellerLocationString(seller.address)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
             .setPaymentIntentToken(paymentIntentToken)
             .build()

@@ -43,6 +43,7 @@ dependencies {
     implementation("org.projectlombok:lombok")
     implementation("org.springframework.boot:spring-boot-starter-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+    implementation("org.springframework.boot:spring-boot-starter-data-elasticsearch")
 
     implementation("org.apache.avro:avro:1.12.0")
     implementation("io.confluent:kafka-streams-avro-serde:7.9.0")

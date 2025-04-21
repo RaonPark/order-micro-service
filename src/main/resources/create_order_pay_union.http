@@ -8,15 +8,16 @@ Content-Type: application/json
       {
         "name": "Coca Cola",
         "quantity": 3,
-        "price": 2300
+        "price": 2300,
+        "sellerId": "1"
       },
       {
         "name": "Coffee Maker",
         "quantity": 1,
-        "price": 310000
+        "price": 310000,
+        "sellerId": "1"
       }
-    ],
-    "sellerId": "1"
+    ]
   },
   "paymentRequest": {
     "amount": 316900,

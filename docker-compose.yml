@@ -130,6 +130,37 @@ services:
     networks:
       - orderservice
 
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+    container_name: elasticsearch
+    ports:
+      - "9200:9200"
+    environment:
+      - discovery.type=single-node
+      - node.name=es00
+      - xpack.security.enabled=false
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - orderservice
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.18.0
+    container_name: kibana
+    ports:
+      - "5601:5601"
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+      - SERVER_NAME=kibana
+    networks:
+      - orderservice
+    depends_on:
+      - elasticsearch
+
   backend:
     image: amazoncorretto:17
     container_name: backend
@@ -154,3 +185,7 @@ services:
 networks:
   orderservice:
     driver: bridge
+
+volumes:
+  es_data:
+    driver: local
