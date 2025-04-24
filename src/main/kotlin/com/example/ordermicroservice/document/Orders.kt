@@ -9,24 +9,25 @@ import org.springframework.data.mongodb.core.mapping.Document
  * 따라서 굳이 data class 의 constructor 를 private 으로 할 필요가 없다.
  */
 @Document(collection = "orders")
-data class Orders (
+data class Orders(
     @Id val id: String? = null,
     val userId: String,
     val orderNumber: String,
     val orderedTime: String,
     val products: List<Products>,
     var processed: ServiceProcessStage,
-    val sellerId: String,
     val paymentIntentToken: String,
 ) {
     companion object {
-        fun of(id: String? = null, userId: String, orderNumber: String, orderedTime: String, products: List<Products>,
-               serviceProcessStage: ServiceProcessStage, sellerId: String, paymentIntentToken: String): Orders {
-            return Orders(id, userId, orderNumber, orderedTime, products, serviceProcessStage, sellerId, paymentIntentToken)
+        fun of(
+            id: String? = null, userId: String, orderNumber: String, orderedTime: String, products: List<Products>,
+            serviceProcessStage: ServiceProcessStage, paymentIntentToken: String
+        ): Orders {
+            return Orders(id, userId, orderNumber, orderedTime, products, serviceProcessStage, paymentIntentToken)
         }
 
         fun noop(): Orders {
-            return Orders(null, "noop", "", "", listOf(), ServiceProcessStage.EXCEPTION, "", "")
+            return Orders(null, "noop", "", "", listOf(), ServiceProcessStage.EXCEPTION, "")
         }
     }
 }

@@ -5,12 +5,11 @@ import com.avro.order.OrderRefundMessage
 import com.avro.shipping.ShippingMessage
 import com.avro.support.geojson.Location
 import com.example.ordermicroservice.constants.KafkaTopicNames
-import com.example.ordermicroservice.document.OrderOutbox
-import com.example.ordermicroservice.document.Orders
-import com.example.ordermicroservice.document.ProcessStage
-import com.example.ordermicroservice.document.ServiceProcessStage
-import com.example.ordermicroservice.dto.GetSellerResponse
+import com.example.ordermicroservice.document.*
 import com.example.ordermicroservice.dto.GetUserResponse
+import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
+import com.example.ordermicroservice.dto.RetrieveOrdersForSellerResponse
+import com.example.ordermicroservice.es.repo.OrdersForSeller
 import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
 import com.example.ordermicroservice.support.MachineIdGenerator
@@ -34,6 +33,9 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.CompletableFuture
+import org.springframework.data.elasticsearch.core.ElasticsearchOperations
+import org.springframework.data.elasticsearch.core.query.Criteria
+import org.springframework.data.elasticsearch.core.query.CriteriaQuery
 
 @Service
 class OrderService(
@@ -43,7 +45,8 @@ class OrderService(
     private val shippingTemplate: KafkaTemplate<String, ShippingMessage>,
     private val orderRefundKafkaTemplate: KafkaTemplate<String, OrderRefundMessage>,
     @Qualifier("readTimeoutExceptionRetryTemplate") private val readTimeoutExceptionRetryTemplate: RetryTemplate,
-    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate
+    @Qualifier("noProducerAvailableExceptionRetryTemplate") private val noProducerAvailableExceptionRetryTemplate: RetryTemplate,
+    private val elasticsearchOperations: ElasticsearchOperations
 ) {
     companion object {
         val log = KotlinLogging.logger {  }
@@ -66,7 +69,6 @@ class OrderService(
             orderedTime = getNowTime(),
             products = order.products,
             serviceProcessStage = ServiceProcessStage.NOT_PROCESS,
-            sellerId = order.sellerId,
             paymentIntentToken = order.paymentIntentToken
         )
 
@@ -86,12 +88,46 @@ class OrderService(
 
         orderOutboxRepository.save(outbox)
 
+        saveOrdersForSellerInElasticsearch(orderEntity)
+
         ack.acknowledge()
     }
 
     private fun getNowTime(): String {
         val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
         return Instant.now().atZone(ZoneId.of("Asia/Seoul")).format(formatter)
+    }
+
+    private fun saveOrdersForSellerInElasticsearch(order: Orders) {
+        val ordersForSellerMap = hashMapOf<String, MutableList<Products>>()
+
+        val orderedUser = RestClient.create("http://localhost:8080")
+            .get()
+            .uri("/service/user?userId=${order.userId}")
+            .retrieve()
+            .body(GetUserResponse::class.java)
+            ?: throw RuntimeException("${order.userId}에 해당하는 유저가 없습니다.")
+
+        order.products.forEach { product ->
+            ordersForSellerMap.getOrPut(product.sellerId) { mutableListOf() }
+                .add(product)
+        }
+
+        ordersForSellerMap.forEach {
+            val sellerId = it.key
+            val products = it.value
+
+            val orderForSeller = OrdersForSeller(
+                orderNumber = order.orderNumber,
+                orderedTime = order.orderedTime,
+                products = products,
+                shippingLocation = orderedUser.address,
+                userId = order.userId,
+                sellerId = sellerId
+            )
+
+            elasticsearchOperations.save(orderForSeller)
+        }
     }
 
     @RetryableTopicForOrderTopic
@@ -172,15 +208,6 @@ class OrderService(
         val order = orderRepository.findByOrderNumber(orderId)
             ?: throw RuntimeException("${orderId}에 해당하는 주문이 없습니다!")
 
-        val sellerRestClient = RestClient.create("http://localhost:8080")
-        val seller = readTimeoutExceptionRetryTemplate.execute<GetSellerResponse, Throwable> {
-            sellerRestClient.get().uri("/service/seller?sellerId={sellerId}", order.sellerId)
-                .accept(MediaType.APPLICATION_JSON)
-                .retrieve()
-                .body<GetSellerResponse>()
-                ?: throw RuntimeException("판매자 ${order.sellerId}에 해당하는 주소가 없습니다.")
-        }
-
         val userRestClient = RestClient.create("http://localhost:8080")
         val user = readTimeoutExceptionRetryTemplate.execute<GetUserResponse, Throwable> {
             userRestClient.get().uri("/service/user?userId={userId}", order.userId)
@@ -198,8 +225,6 @@ class OrderService(
                 .build())
             .setShippingLocationString(user.address)
             .setUsername(user.username)
-            .setSellerName(seller.sellerName)
-            .setSellerLocationString(seller.address)
             .setProcessStage(com.avro.support.ProcessStage.PENDING)
             .setPaymentIntentToken(paymentIntentToken)
             .build()
@@ -255,5 +280,27 @@ class OrderService(
         orderRepository.save(savedOrder)
 
         orderOutboxRepository.save(orderOutbox)
+    }
+
+    fun retrieveOrdersForSeller(sellerId: String): RetrieveOrdersForSellerListResponse {
+        val searchOrdersForSellerQuery = CriteriaQuery(Criteria.where("sellerId").`is`(sellerId))
+        val ordersForSellerList = mutableListOf<RetrieveOrdersForSellerResponse>()
+        elasticsearchOperations.search(searchOrdersForSellerQuery, OrdersForSeller::class.java)
+            .forEach {
+                val ordersForSeller = it.content
+
+                ordersForSellerList.add(
+                    RetrieveOrdersForSellerResponse(
+                        orderNumber = ordersForSeller.orderNumber,
+                        products = ordersForSeller.products,
+                        userId = ordersForSeller.userId,
+                        shippingLocation = ordersForSeller.shippingLocation,
+                        orderedTime = ordersForSeller.orderedTime,
+                        sellerId = ordersForSeller.sellerId
+                    )
+                )
+            }
+
+        return RetrieveOrdersForSellerListResponse(ordersForSellerList)
     }
 }

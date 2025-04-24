@@ -4,6 +4,7 @@ import com.avro.order.OrderRefundMessage
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.dto.CreateOrderRequest
+import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
 import com.example.ordermicroservice.dto.SavePayRequest
 import com.example.ordermicroservice.dto.SavePayResponse
 import com.example.ordermicroservice.service.RedisService
@@ -80,18 +81,6 @@ class ApiGateway (
         }
     }
 
-    private fun getPaymentIntentToken(paymentRequest: SavePayRequest): String {
-        return readTimeoutExceptionRetryTemplate.execute<String, Throwable> {
-            restClient.post()
-                .uri("/service/savePaymentInfo")
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(paymentRequest)
-                .retrieve()
-                .body(String::class.java)
-                ?: throw RuntimeException("Payment Service 에 문제가 생겼습니다.")
-        }
-    }
-
     @GetMapping("/gateway/**")
     fun getGateway(httpServletRequest: HttpServletRequest) {
         val requestUri = httpServletRequest.requestURI.replace("/gateway", "")
@@ -99,11 +88,13 @@ class ApiGateway (
         val header = getHeaders(httpServletRequest)
         log.info { header }
 
+        val requestParams = httpServletRequest.queryString
+
         val request = ThrottlingRequest.newBuilder()
             .setRequestMethod(httpServletRequest.method)
             .setApiName(requestUri)
             .setHeader(header)
-            .setBody("")
+            .setBody(requestParams)
             .setRequested(1L)
             .setTimestamp(System.currentTimeMillis())
             .build()
@@ -113,17 +104,6 @@ class ApiGateway (
                 it.send(KafkaTopicNames.THROTTLING_REQUEST, requestUri, request)
             }
         }
-    }
-
-    internal data class OrderPayUnionBody(
-        val orderRequest: CreateOrderRequest,
-        val paymentRequest: SavePayRequest
-    )
-
-    private fun parseOrderBodyToString(body: String): String {
-        val unionBody = objectMapper.readValue(body, OrderPayUnionBody::class.java)
-        val paymentIntentToken = getPaymentIntentToken(unionBody.paymentRequest)
-        return objectMapper.writeValueAsString(CreateOrderVo.convertDto2Vo(unionBody.orderRequest, paymentIntentToken))
     }
 
     private fun getHeaders(httpServletRequest: HttpServletRequest): Map<String, String> {
@@ -162,12 +142,9 @@ class ApiGateway (
                     }
                 }
                 "GET" -> {
-                    val header = map2HttpHeaderConsumer(requests.header)
-
-                    restClient.get()
-                        .uri(requests.apiName)
-                        .headers(header)
-                        .retrieve()
+                    if(GatewayRouter.orderRouter(requests.apiName)) {
+                        routeOrder(requests)
+                    }
                 }
             }
 
@@ -202,9 +179,41 @@ class ApiGateway (
                     }
                 }
             }
+            "/service/retrieveOrdersForSeller" -> {
+                val retrieveResults = restClient.get()
+                    .uri("/service/retrieveOrdersForSeller?${requests.body}")
+                    .retrieve()
+                    .body(RetrieveOrdersForSellerListResponse::class.java)
+                    ?: throw RuntimeException("RestClient 에러가 발생했습니다.")
+
+                log.info { retrieveResults }
+            }
             else -> {
                 log.info { "Unknown API Request : ${requests.apiName}" }
             }
+        }
+    }
+
+    internal data class OrderPayUnionBody(
+        val orderRequest: CreateOrderRequest,
+        val paymentRequest: SavePayRequest
+    )
+
+    private fun parseOrderBodyToString(body: String): String {
+        val unionBody = objectMapper.readValue(body, OrderPayUnionBody::class.java)
+        val paymentIntentToken = getPaymentIntentToken(unionBody.paymentRequest)
+        return objectMapper.writeValueAsString(CreateOrderVo.convertDto2Vo(unionBody.orderRequest, paymentIntentToken))
+    }
+
+    private fun getPaymentIntentToken(paymentRequest: SavePayRequest): String {
+        return readTimeoutExceptionRetryTemplate.execute<String, Throwable> {
+            restClient.post()
+                .uri("/service/savePaymentInfo")
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(paymentRequest)
+                .retrieve()
+                .body(String::class.java)
+                ?: throw RuntimeException("Payment Service 에 문제가 생겼습니다.")
         }
     }
 
@@ -223,4 +232,11 @@ class ApiGateway (
 
         return result
     }
+
+    internal class OrderNumberAndBy(
+        val orderNumber: String,
+        val userOrSeller: String,
+    )
+
+
 }

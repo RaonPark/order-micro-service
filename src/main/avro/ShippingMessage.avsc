@@ -24,14 +24,6 @@
       "type": "string"
     },
     {
-      "name": "sellerName",
-      "type": "string"
-    },
-    {
-      "name": "sellerLocationString",
-      "type": "string"
-    },
-    {
       "name": "paymentIntentToken",
       "type": "string"
     }
