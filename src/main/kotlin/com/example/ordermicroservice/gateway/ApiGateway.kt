@@ -4,6 +4,7 @@ import com.avro.order.OrderRefundMessage
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.dto.CreateOrderRequest
+import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
 import com.example.ordermicroservice.dto.SavePayRequest
 import com.example.ordermicroservice.dto.SavePayResponse
 import com.example.ordermicroservice.service.RedisService
@@ -87,11 +88,13 @@ class ApiGateway (
         val header = getHeaders(httpServletRequest)
         log.info { header }
 
+        val requestParams = httpServletRequest.queryString
+
         val request = ThrottlingRequest.newBuilder()
             .setRequestMethod(httpServletRequest.method)
             .setApiName(requestUri)
             .setHeader(header)
-            .setBody("")
+            .setBody(requestParams)
             .setRequested(1L)
             .setTimestamp(System.currentTimeMillis())
             .build()
@@ -176,8 +179,14 @@ class ApiGateway (
                     }
                 }
             }
-            "/service/retrieveOrder" -> {
+            "/service/retrieveOrdersForSeller" -> {
+                val retrieveResults = restClient.get()
+                    .uri("/service/retrieveOrdersForSeller?${requests.body}")
+                    .retrieve()
+                    .body(RetrieveOrdersForSellerListResponse::class.java)
+                    ?: throw RuntimeException("RestClient 에러가 발생했습니다.")
 
+                log.info { retrieveResults }
             }
             else -> {
                 log.info { "Unknown API Request : ${requests.apiName}" }
