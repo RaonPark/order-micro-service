@@ -11,6 +11,7 @@
 - Docker
 - MySQL
 - Spring Data JPA
+- Spring Data Elasticsearch
 
 ## 이 주문 서비스가 뭐가 특별한데? 🤔
 주문 서비스는 주문-결제-배송이 굉장히 동기적인 서비스입니다. 왜냐하면 주문이 안되었는데 결제를 할 수 없으며, 결제가 안되었는데 배송준비를 하면 안되겠죠?
