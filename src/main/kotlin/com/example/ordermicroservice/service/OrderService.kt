@@ -17,6 +17,7 @@ import com.example.ordermicroservice.support.SnowflakeIdGenerator
 import com.example.ordermicroservice.vo.CreateOrderVo
 import com.example.ordermicroservice.vo.OrderCompensation
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.*
 import org.apache.kafka.clients.consumer.ConsumerRecord
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.MediaType
@@ -88,8 +89,14 @@ class OrderService(
         orderOutboxRepository.save(outbox)
 
         // TODO("비동기로 처리하기: Kafka로 처리할 지 아니면 코루틴을 사용할지...")
-        saveOrdersForSellerInElasticsearch(orderEntity)
-        saveOrdersForUserInElasticsearch(orderEntity)
+        // 우선은 코루틴을 사용해보자.. IO Dispatcher 내부 함수가 restClient 를 사용하므로 Dispatcher.IO를 쓰는 것이 더 옳아보인다..
+        runBlocking {
+            withContext(Dispatchers.IO) {
+                saveOrdersForSellerInElasticsearch(orderEntity)
+                saveOrdersForUserInElasticsearch(orderEntity)
+            }
+        }
+
 
         ack.acknowledge()
     }
