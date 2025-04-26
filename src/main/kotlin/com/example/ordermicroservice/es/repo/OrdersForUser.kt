@@ -6,21 +6,24 @@ import org.springframework.data.elasticsearch.annotations.Document
 import org.springframework.data.elasticsearch.annotations.Field
 import org.springframework.data.elasticsearch.annotations.FieldType
 
-@Document(indexName = "orders_for_users", createIndex = true)
-class OrdersForUsers(
+@Document(indexName = "orders_for_user", createIndex = true)
+class OrdersForUser(
     @Id
     private val id: String? = null,
 
     @Field(name = "user_id", type = FieldType.Text)
-    private val userId: String,
+    val userId: String,
 
     @Field(name = "order_number", type = FieldType.Text)
-    private val orderNumber: String,
+    val orderNumber: String,
 
     @Field(name = "ordered_time", type = FieldType.Text)
-    private val orderedTime: String,
+    val orderedTime: String,
 
     @Field(name = "products", type = FieldType.Object, store = false)
-    private val products: List<Products>,
+    val products: List<Products>,
+
+    @Field(name = "shipping_status", type = FieldType.Object, store = false)
+    val shippingStatus: ShippingStatus = ShippingStatus.BEFORE_SHIPPING
 ) {
 }

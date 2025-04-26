@@ -6,10 +6,9 @@ import com.avro.shipping.ShippingMessage
 import com.avro.support.geojson.Location
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.document.*
-import com.example.ordermicroservice.dto.GetUserResponse
-import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
-import com.example.ordermicroservice.dto.RetrieveOrdersForSellerResponse
+import com.example.ordermicroservice.dto.*
 import com.example.ordermicroservice.es.repo.OrdersForSeller
+import com.example.ordermicroservice.es.repo.OrdersForUser
 import com.example.ordermicroservice.repository.mongo.OrderOutboxRepository
 import com.example.ordermicroservice.repository.mongo.OrderRepository
 import com.example.ordermicroservice.support.MachineIdGenerator
@@ -88,7 +87,9 @@ class OrderService(
 
         orderOutboxRepository.save(outbox)
 
+        // TODO("비동기로 처리하기: Kafka로 처리할 지 아니면 코루틴을 사용할지...")
         saveOrdersForSellerInElasticsearch(orderEntity)
+        saveOrdersForUserInElasticsearch(orderEntity)
 
         ack.acknowledge()
     }
@@ -128,6 +129,16 @@ class OrderService(
 
             elasticsearchOperations.save(orderForSeller)
         }
+    }
+
+    private fun saveOrdersForUserInElasticsearch(orderEntity: Orders) {
+        val orderForUser = OrdersForUser(
+            userId = orderEntity.userId,
+            orderNumber = orderEntity.orderNumber,
+            orderedTime = orderEntity.orderedTime,
+            products = orderEntity.products
+        )
+        elasticsearchOperations.save(orderForUser)
     }
 
     @RetryableTopicForOrderTopic
@@ -284,13 +295,13 @@ class OrderService(
 
     fun retrieveOrdersForSeller(sellerId: String): RetrieveOrdersForSellerListResponse {
         val searchOrdersForSellerQuery = CriteriaQuery(Criteria.where("sellerId").`is`(sellerId))
-        val ordersForSellerList = mutableListOf<RetrieveOrdersForSellerResponse>()
+        val ordersForSellerList = mutableListOf<RetrieveOrdersForSellerDTO>()
         elasticsearchOperations.search(searchOrdersForSellerQuery, OrdersForSeller::class.java)
             .forEach {
                 val ordersForSeller = it.content
 
                 ordersForSellerList.add(
-                    RetrieveOrdersForSellerResponse(
+                    RetrieveOrdersForSellerDTO(
                         orderNumber = ordersForSeller.orderNumber,
                         products = ordersForSeller.products,
                         userId = ordersForSeller.userId,
@@ -303,4 +314,26 @@ class OrderService(
 
         return RetrieveOrdersForSellerListResponse(ordersForSellerList)
     }
+
+    fun retrieveOrdersForUser(userId: String): RetrieveOrdersForUserListResponse {
+        val searchOrderForUserQuery = CriteriaQuery(Criteria.where("userId").`is`(userId))
+        val ordersForUserList = mutableListOf<RetrieveOrdersForUserDTO>()
+
+        elasticsearchOperations.search(searchOrderForUserQuery, OrdersForUser::class.java)
+            .forEach { indexes ->
+                val order = indexes.content
+
+                ordersForUserList.add(
+                    RetrieveOrdersForUserDTO(
+                        orderNumber = order.orderNumber,
+                        orderedTime = order.orderedTime,
+                        products = order.products,
+                        shippingStatus = order.shippingStatus
+                    )
+                )
+            }
+
+        return RetrieveOrdersForUserListResponse(ordersForUserList)
+    }
+
 }

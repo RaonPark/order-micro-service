@@ -2,7 +2,7 @@ package com.example.ordermicroservice.dto
 
 import com.example.ordermicroservice.document.Products
 
-data class RetrieveOrdersForSellerResponse(
+data class RetrieveOrdersForSellerDTO(
     val orderNumber: String,
     val products: List<Products>,
     val userId: String,

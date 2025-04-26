@@ -3,6 +3,7 @@ package com.example.ordermicroservice.controller
 import com.example.ordermicroservice.dto.CreateOrderRequest
 import com.example.ordermicroservice.dto.CreateOrderResponse
 import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
+import com.example.ordermicroservice.dto.RetrieveOrdersForUserListResponse
 import com.example.ordermicroservice.service.OrderService
 import com.example.ordermicroservice.support.ServiceController
 import org.springframework.http.ResponseEntity
@@ -20,5 +21,10 @@ class OrderController(
     @GetMapping("/retrieveOrdersForSeller")
     fun retrieveOrdersForSeller(@RequestParam("sellerId")sellerId: String): RetrieveOrdersForSellerListResponse {
         return orderService.retrieveOrdersForSeller(sellerId)
+    }
+
+    @GetMapping("/retrieveOrdersForUser")
+    fun retrieveOrdersForUser(@RequestParam("userId")userId: String): RetrieveOrdersForUserListResponse {
+        return orderService.retrieveOrdersForUser(userId)
     }
 }

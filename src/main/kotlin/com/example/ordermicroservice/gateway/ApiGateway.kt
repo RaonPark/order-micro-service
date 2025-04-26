@@ -3,10 +3,7 @@ package com.example.ordermicroservice.gateway
 import com.avro.order.OrderRefundMessage
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.constants.KafkaTopicNames
-import com.example.ordermicroservice.dto.CreateOrderRequest
-import com.example.ordermicroservice.dto.RetrieveOrdersForSellerListResponse
-import com.example.ordermicroservice.dto.SavePayRequest
-import com.example.ordermicroservice.dto.SavePayResponse
+import com.example.ordermicroservice.dto.*
 import com.example.ordermicroservice.service.RedisService
 import com.example.ordermicroservice.vo.CreateOrderVo
 import com.fasterxml.jackson.databind.ObjectMapper
@@ -188,6 +185,15 @@ class ApiGateway (
 
                 log.info { retrieveResults }
             }
+            "/service/retrieveOrdersForUser" -> {
+                val retrieveResults = restClient.get()
+                    .uri("/service/retrieveOrdersForUser?${requests.body}")
+                    .retrieve()
+                    .body(RetrieveOrdersForUserListResponse::class.java)
+                    ?: throw RuntimeException("RestClient 에러가 발생했습니다.")
+
+                log.info { retrieveResults }
+            }
             else -> {
                 log.info { "Unknown API Request : ${requests.apiName}" }
             }
@@ -232,11 +238,4 @@ class ApiGateway (
 
         return result
     }
-
-    internal class OrderNumberAndBy(
-        val orderNumber: String,
-        val userOrSeller: String,
-    )
-
-
 }
