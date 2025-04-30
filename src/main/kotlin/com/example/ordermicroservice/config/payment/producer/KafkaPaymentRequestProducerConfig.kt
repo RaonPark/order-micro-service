@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.payment.producer
 
 import com.avro.payment.PaymentRequestMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import com.example.ordermicroservice.vo.PaymentIntentTokenVo
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
@@ -33,6 +34,9 @@ class KafkaPaymentRequestProducerConfig {
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "Payment.Request.tx"
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, PaymentRequestMessage>(config)
         producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))

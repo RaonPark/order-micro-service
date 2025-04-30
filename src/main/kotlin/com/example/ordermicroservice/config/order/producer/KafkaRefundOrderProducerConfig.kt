@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.order.producer
 
 import com.avro.order.OrderRefundMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerializer
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -30,6 +31,9 @@ class KafkaRefundOrderProducerConfig {
             ProducerConfig.COMPRESSION_TYPE_CONFIG to "snappy",
             ProducerConfig.TRANSACTIONAL_ID_CONFIG to "order-refund-tx",
             ProducerConfig.TRANSACTION_TIMEOUT_CONFIG to "5000",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         val producerFactory = DefaultKafkaProducerFactory<String, OrderRefundMessage>(config)

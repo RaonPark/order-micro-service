@@ -1,5 +1,6 @@
 package com.example.ordermicroservice.config
 
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import com.example.ordermicroservice.constants.KafkaGroupIds
 import com.example.ordermicroservice.vo.Compensation
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -34,6 +35,9 @@ class KafkaOrderCompensationConfig {
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
         config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         return config
     }
@@ -85,6 +89,9 @@ class KafkaOrderCompensationConfig {
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "order.compensation.tx"
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, Compensation>(config)
         producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))

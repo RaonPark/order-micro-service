@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.payment.producer
 
 import com.avro.payment.PaymentOutboxMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -32,6 +33,9 @@ class KafkaPaymentOutboxProducerConfig {
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "5000"
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
         config[ProducerConfig.RETRIES_CONFIG] = Integer.MAX_VALUE.toString()
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, PaymentOutboxMessage>(config)
         // Greater Than Concurrency if ConcurrentKafkaContainerListener used.

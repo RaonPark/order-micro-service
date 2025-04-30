@@ -1,5 +1,6 @@
 package com.example.ordermicroservice.config.order.producer
 
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import com.example.ordermicroservice.vo.CreateOrderVo
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.StringSerializer
@@ -30,6 +31,9 @@ class KafkaCreateOrderProducerConfig {
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "order.request.tx"
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, CreateOrderVo>(config)
         producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))

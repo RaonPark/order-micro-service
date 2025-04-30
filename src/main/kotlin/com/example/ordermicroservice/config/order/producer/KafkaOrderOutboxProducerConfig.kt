@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.order.producer
 
 import com.avro.order.OrderOutboxMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -36,6 +37,9 @@ class KafkaOrderOutboxProducerConfig {
         config[ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG] = "true"
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "order.outbox.tx"
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "3000"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, OrderOutboxMessage>(config)
         producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))

@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.shipping
 
 import com.avro.shipping.ShippingMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -31,6 +32,9 @@ class KafkaShippingProducerConfig {
         config[ProducerConfig.TRANSACTIONAL_ID_CONFIG] = "shipping-tx"
         config[ProducerConfig.RETRIES_CONFIG] = Integer.MAX_VALUE.toString()
         config[ProducerConfig.TRANSACTION_TIMEOUT_CONFIG] = "5000"
+        config["sasl.jaas.config"] = JaasProperties.JAAS_CLIENT
+        config["security.protocol"] = "SASL_PLAINTEXT"
+        config["sasl.mechanism"] = "PLAIN"
 
         val producerFactory = DefaultKafkaProducerFactory<String, ShippingMessage>(config)
         producerFactory.setTransactionIdSuffixStrategy(DefaultTransactionIdSuffixStrategy(5))

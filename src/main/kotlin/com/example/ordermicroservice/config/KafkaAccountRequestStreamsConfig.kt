@@ -3,6 +3,7 @@ package com.example.ordermicroservice.config
 import com.avro.account.AccountRequestMessage
 import com.avro.account.AccountRequestType
 import com.avro.account.AccountVoMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.outbox.AvroService
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
@@ -58,6 +59,9 @@ class KafkaAccountRequestStreamsConfig {
             StreamsConfig.producerPrefix(ProducerConfig.BATCH_SIZE_CONFIG) to 32 * 1024,
             StreamsConfig.producerPrefix(ProducerConfig.COMPRESSION_TYPE_CONFIG) to "snappy",
             AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         return StreamsBuilderFactoryBean(KafkaStreamsConfiguration(config))
@@ -111,6 +115,9 @@ class KafkaAccountRequestStreamsConfig {
             ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to "true",
             ProducerConfig.TRANSACTIONAL_ID_CONFIG to "account.request.tx",
             ProducerConfig.TRANSACTION_TIMEOUT_CONFIG to "5000",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         val producerFactory = DefaultKafkaProducerFactory<String, AccountRequestMessage>(config)
@@ -137,7 +144,10 @@ class KafkaAccountRequestStreamsConfig {
             ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
             KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,
-            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG to AccountVoMessage::class.java
+            KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG to AccountVoMessage::class.java,
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         return DefaultKafkaConsumerFactory(config)

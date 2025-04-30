@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.order.consumer
 
 import com.avro.order.OrderRefundMessage
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import io.confluent.kafka.serializers.KafkaAvroDeserializer
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -32,7 +33,10 @@ class KafkaRefundOrderConsumerConfig {
             ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
-            ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed"
+            ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         return DefaultKafkaConsumerFactory(config)

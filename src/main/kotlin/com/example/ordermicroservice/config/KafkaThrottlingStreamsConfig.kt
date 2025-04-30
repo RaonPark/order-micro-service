@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config
 
 import com.avro.support.ThrottlingRequest
+import com.example.ordermicroservice.config.jaas.JaasProperties
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.gateway.FixedWindowThrottlingProcessor
 import com.example.ordermicroservice.outbox.AvroService
@@ -56,6 +57,9 @@ class KafkaThrottlingStreamsConfig {
             StreamsConfig.consumerPrefix(ConsumerConfig.GROUP_ID_CONFIG) to "throttling.streams.group",
             StreamsConfig.consumerPrefix(ConsumerConfig.ISOLATION_LEVEL_CONFIG) to "read_committed",
             AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         return StreamsBuilderFactoryBean(KafkaStreamsConfiguration(config))
@@ -118,6 +122,9 @@ class KafkaThrottlingStreamsConfig {
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
             ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
+            "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,
+            "security.protocol" to "SASL_PLAINTEXT",
+            "sasl.mechanism" to "PLAIN"
         )
 
         return DefaultKafkaConsumerFactory(config)
