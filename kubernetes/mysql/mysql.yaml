@@ -8,9 +8,8 @@ spec:
   ports:
     - protocol: TCP
       port: 3306
-      targetPort: 3306
-      nodePort: 3306
       name: mysql-port
+      nodePort: 30306
   type: NodePort
 ---
 apiVersion: apps/v1
@@ -40,13 +39,35 @@ spec:
               name: mysql
           volumeMounts:
             - mountPath: /var/lib/mysql
-              name: mysql-storage
-            - mountPath: /docker-entrypoint-initdb.d
-              name: initdb
+              name: mysql-persistence-storage
       volumes:
-        - name: mysql-storage
+        - name: mysql-persistence-storage
           persistentVolumeClaim:
-            claimName: mysql-svc
-        - name: initdb
-          configMap:
-            name: mysql-initdb-config
+            claimName: mysql-pv-claim
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: mysql-pv-volume
+  labels:
+    type: local
+spec:
+  storageClassName: manual
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: "/mnt/data"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pv-claim
+spec:
+  storageClassName: manual
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
