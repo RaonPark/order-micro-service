@@ -1,0 +1,59 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kibana-config
+  labels:
+    app: kibana
+data:
+  kibana.yaml: |-
+    server.host: 0.0.0.0
+    elasticsearch:
+      hosts: ${ELASTICSEARCH_HOSTS}
+      username: ${ELASTICSEARCH_USER}
+      password: ${ELASTICSEARCH_PASSWORD}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kibana
+  labels:
+    app: kibana
+spec:
+  type: NodePort
+  ports:
+    - port: 5601
+      name: kibana-port
+  selector:
+    app: kibana
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  labels:
+    app: kibana
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kibana
+  template:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
+        - name: kibana
+          image: docker.elastic.co/kibana/kibana:8.18.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5601
+              name: kibana-port
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch-0.elasticsearch.default.svc.cluster.local:9200
+            - name: ELASTICSEARCH_USER
+              value: elastic
+            - name: ELASTICSEARCH_PASSWORD
+              value: my-elastic
+
