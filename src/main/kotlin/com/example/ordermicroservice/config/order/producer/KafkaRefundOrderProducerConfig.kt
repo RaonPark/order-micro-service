@@ -2,6 +2,7 @@ package com.example.ordermicroservice.config.order.producer
 
 import com.avro.order.OrderRefundMessage
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import io.confluent.kafka.streams.serdes.avro.SpecificAvroSerializer
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -20,7 +21,7 @@ class KafkaRefundOrderProducerConfig {
     @Bean
     fun refundOrderProducerFactory(): ProducerFactory<String, OrderRefundMessage> {
         val config = mapOf(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ProducerConfig.ACKS_CONFIG to "all",
             ProducerConfig.LINGER_MS_CONFIG to 20,
             ProducerConfig.BATCH_SIZE_CONFIG to 32 * 1024,

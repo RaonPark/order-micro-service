@@ -2,6 +2,7 @@ package com.example.ordermicroservice.config.payment.consumer
 
 import com.avro.payment.PaymentRequestMessage
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.vo.PaymentIntentTokenVo
 import io.confluent.kafka.serializers.KafkaAvroDeserializer
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig
@@ -31,7 +32,7 @@ class KafkaPaymentRequestConsumerConfig {
         config[KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG] = "true"
         config[KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG] = PaymentRequestMessage::class.java
         config[ConsumerConfig.AUTO_OFFSET_RESET_CONFIG] = "earliest"
-        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
         config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"

@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: amazoncorretto:17
+          image: raonpark/ordermicroservice:latest
           imagePullPolicy: IfNotPresent
-      restartPolicy: OnFailure
+      restartPolicy: Always
       

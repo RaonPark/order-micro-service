@@ -2,6 +2,7 @@ package com.example.ordermicroservice.config.order.consumer
 
 import com.avro.order.OrderRefundMessage
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import io.confluent.kafka.serializers.KafkaAvroDeserializer
 import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -30,7 +31,7 @@ class KafkaRefundOrderConsumerConfig {
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG to OrderRefundMessage::class.java,
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
             ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",

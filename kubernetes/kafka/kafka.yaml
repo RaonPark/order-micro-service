@@ -98,7 +98,6 @@ spec:
             - |
               export KAFKA_NODE_ID=${HOSTNAME##*-} && \
               export KAFKA_ADVERTISED_LISTENERS=SASL://${POD_NAME}.kafka-headless.kafka.svc.cluster.local:9092
-
               exec /etc/confluent/docker/run
           env:
             - name: KAFKA_LISTENER_NAME_SASL_PLAIN_SASL_JAAS_CONFIG

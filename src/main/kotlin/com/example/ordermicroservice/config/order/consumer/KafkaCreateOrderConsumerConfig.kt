@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.order.consumer
 
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.vo.CreateOrderVo
 import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.apache.kafka.common.serialization.StringDeserializer
@@ -28,7 +29,7 @@ class KafkaCreateOrderConsumerConfig {
         config[JsonDeserializer.VALUE_DEFAULT_TYPE] = CreateOrderVo::class.java
         config["spring.kafka.consumer.properties.spring.json.encoding"] = "UTF-8"
         config[ConsumerConfig.AUTO_OFFSET_RESET_CONFIG] = "earliest"
-        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
         config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"

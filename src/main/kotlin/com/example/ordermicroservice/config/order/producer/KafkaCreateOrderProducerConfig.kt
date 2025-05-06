@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config.order.producer
 
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.vo.CreateOrderVo
 import org.apache.kafka.clients.producer.ProducerConfig
 import org.apache.kafka.common.serialization.StringSerializer
@@ -20,7 +21,7 @@ class KafkaCreateOrderProducerConfig {
     fun createOrderProducerFactory(): ProducerFactory<String, CreateOrderVo> {
         val config = mutableMapOf<String, Any>()
         config[ProducerConfig.CLIENT_ID_CONFIG] = "CREATE_ORDER_PRODUCER"
-        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ProducerConfig.ACKS_CONFIG] = "all"
         config[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
         config[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = JsonSerializer::class.java

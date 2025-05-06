@@ -4,6 +4,7 @@ import com.avro.account.AccountRequestMessage
 import com.avro.account.AccountRequestType
 import com.avro.account.AccountVoMessage
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.outbox.AvroService
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
@@ -51,7 +52,7 @@ class KafkaAccountRequestStreamsConfig {
             StreamsConfig.CLIENT_ID_CONFIG to "ACCOUNT_REQUEST_STREAMS",
             StreamsConfig.APPLICATION_ID_CONFIG to "ACCOUNT_REQUEST_APP",
             StreamsConfig.PROCESSING_GUARANTEE_CONFIG to StreamsConfig.EXACTLY_ONCE_V2,
-            StreamsConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            StreamsConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG to StringSerde::class.java,
             StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG to SpecificAvroSerde::class.java,
             StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG) to "all",
@@ -111,7 +112,7 @@ class KafkaAccountRequestStreamsConfig {
             ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG to StringSerializer::class.java,
             ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG to KafkaAvroSerializer::class.java,
             KafkaAvroSerializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG to "true",
             ProducerConfig.TRANSACTIONAL_ID_CONFIG to "account.request.tx",
             ProducerConfig.TRANSACTION_TIMEOUT_CONFIG to "5000",
@@ -140,7 +141,7 @@ class KafkaAccountRequestStreamsConfig {
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ConsumerConfig.ISOLATION_LEVEL_CONFIG to "read_committed",
             KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to true,

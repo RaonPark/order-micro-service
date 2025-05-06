@@ -21,7 +21,7 @@ class KafkaShippingProducerConfig {
     fun shippingProducerFactory(): ProducerFactory<String, ShippingMessage> {
         val config = mutableMapOf<String, Any>()
         config[ProducerConfig.CLIENT_ID_CONFIG] = "Shipping_Producer"
-        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ProducerConfig.ACKS_CONFIG] = "all"
         config[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
         config[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = KafkaAvroSerializer::class.java

@@ -17,7 +17,7 @@ class KafkaAdminConfig {
     @Primary
     fun admin() = KafkaAdmin(
         mapOf(
-            AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             AdminClientConfig.CLIENT_ID_CONFIG to "KAFKA_ADMIN",
             AdminClientConfig.SECURITY_PROTOCOL_CONFIG to "PLAINTEXT",
             "sasl.jaas.config" to JaasProperties.JAAS_CLIENT,

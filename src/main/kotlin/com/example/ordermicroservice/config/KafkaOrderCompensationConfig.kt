@@ -1,6 +1,7 @@
 package com.example.ordermicroservice.config
 
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.constants.KafkaGroupIds
 import com.example.ordermicroservice.vo.Compensation
 import org.apache.kafka.clients.consumer.ConsumerConfig
@@ -31,7 +32,7 @@ class KafkaOrderCompensationConfig {
         config[JsonDeserializer.USE_TYPE_INFO_HEADERS] = "false"
         config[JsonDeserializer.VALUE_DEFAULT_TYPE] = Compensation::class.java
         config[ConsumerConfig.AUTO_OFFSET_RESET_CONFIG] = "earliest"
-        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG] = "false"
         config[ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG] = "true"
         config[ConsumerConfig.ISOLATION_LEVEL_CONFIG] = "read_committed"
@@ -79,7 +80,7 @@ class KafkaOrderCompensationConfig {
     fun compensationProducerFactory(): ProducerFactory<String, Compensation> {
         val config = mutableMapOf<String, Any>()
         config[ProducerConfig.CLIENT_ID_CONFIG] = "ORDER_COMPENSATION_PRODUCER"
-        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ProducerConfig.ACKS_CONFIG] = "all"
         config[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
         config[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = JsonSerializer::class.java

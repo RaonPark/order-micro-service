@@ -2,6 +2,7 @@ package com.example.ordermicroservice.config.payment.producer
 
 import com.avro.payment.PaymentOutboxMessage
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import io.confluent.kafka.serializers.KafkaAvroSerializer
 import io.confluent.kafka.serializers.KafkaAvroSerializerConfig
 import org.apache.kafka.clients.producer.ProducerConfig
@@ -21,7 +22,7 @@ class KafkaPaymentOutboxProducerConfig {
     fun paymentOutboxProducerFactory(): ProducerFactory<String, PaymentOutboxMessage> {
         val config = mutableMapOf<String, Any>()
         config[ProducerConfig.CLIENT_ID_CONFIG] = "PAYMENT_OUTBOX_PRODUCER"
-        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = "kafka1:9092,kafka2:9092,kafka3:9092"
+        config[ProducerConfig.BOOTSTRAP_SERVERS_CONFIG] = KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS
         config[ProducerConfig.ACKS_CONFIG] = "all"
         config[ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG] = StringSerializer::class.java
         config[ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG] = KafkaAvroSerializer::class.java

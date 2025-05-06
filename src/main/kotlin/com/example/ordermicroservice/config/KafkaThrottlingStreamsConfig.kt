@@ -2,6 +2,7 @@ package com.example.ordermicroservice.config
 
 import com.avro.support.ThrottlingRequest
 import com.example.ordermicroservice.config.jaas.JaasProperties
+import com.example.ordermicroservice.constants.KafkaBootstrapUrls
 import com.example.ordermicroservice.constants.KafkaTopicNames
 import com.example.ordermicroservice.gateway.FixedWindowThrottlingProcessor
 import com.example.ordermicroservice.outbox.AvroService
@@ -44,7 +45,7 @@ class KafkaThrottlingStreamsConfig {
             StreamsConfig.CLIENT_ID_CONFIG to "Throttling.Streams.id",
             StreamsConfig.APPLICATION_ID_CONFIG to "THROTTLING.STREAMS.APP",
             StreamsConfig.PROCESSING_GUARANTEE_CONFIG to StreamsConfig.EXACTLY_ONCE_V2,
-            StreamsConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            StreamsConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG to StringSerde::class.java,
             StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG to SpecificAvroSerde::class.java,
             StreamsConfig.producerPrefix(ProducerConfig.ACKS_CONFIG) to "all",
@@ -83,7 +84,7 @@ class KafkaThrottlingStreamsConfig {
     @Bean
     fun fixedWindowThrottlingProducerFactory(): ProducerFactory<String, ThrottlingRequest> {
         val config = mapOf(
-            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ProducerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ProducerConfig.ACKS_CONFIG to "all",
             ProducerConfig.LINGER_MS_CONFIG to 20,
             ProducerConfig.BATCH_SIZE_CONFIG to 32 * 1024,
@@ -117,7 +118,7 @@ class KafkaThrottlingStreamsConfig {
             KafkaAvroDeserializerConfig.SCHEMA_REGISTRY_URL_CONFIG to "http://schema-registry:8081",
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG to "true",
             KafkaAvroDeserializerConfig.SPECIFIC_AVRO_VALUE_TYPE_CONFIG to ThrottlingRequest::class.java,
-            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to "kafka1:9092,kafka2:9092,kafka3:9092",
+            ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG to KafkaBootstrapUrls.KAFKA_K8S_BOOTSTRAP_SERVERS,
             ConsumerConfig.AUTO_OFFSET_RESET_CONFIG to "earliest",
             ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG to "false",
             ConsumerConfig.ALLOW_AUTO_CREATE_TOPICS_CONFIG to "true",
