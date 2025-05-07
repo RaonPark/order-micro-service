@@ -3,7 +3,7 @@ spring:
     name: "ordermircroservice"
   data:
     mongodb:
-      uri: mongodb://root:1234@mongodb:27017/ordermicroservice?authSource=admin
+      uri: mongodb://root:1234@mongodb-0.mongodb.default.svc.cluster.local:27017,mongodb-1.mongodb.default.svc.cluster.local:27017/ordermicroservice?authSource=admin&replicaSet=rs0
       host: root
       password: 1234
       database: ordermicroservice

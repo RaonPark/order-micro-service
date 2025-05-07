@@ -18,6 +18,6 @@ spec:
       containers:
         - name: backend
           image: raonpark/ordermicroservice:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
       restartPolicy: Always
       

@@ -10,7 +10,8 @@ import org.springframework.data.elasticsearch.repository.config.EnableElasticsea
 class ElasticSearchConfig: ElasticsearchConfiguration() {
     override fun clientConfiguration(): ClientConfiguration {
         return ClientConfiguration.builder()
-            .connectedTo("elasticsearch:9200")
+            .connectedTo("http://elasticsearch-0.elasticsearch.default.svc.cluster.local:9200")
+            .withBasicAuth("elastic", "my-elastic")
             .build()
     }
 }
